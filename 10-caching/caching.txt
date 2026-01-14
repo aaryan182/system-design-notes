@@ -1,0 +1,28 @@
+Caches are anything that helps you avoid an expensive network I/O, disk I/O or computation.
+
+1) API call to get profile information
+2) Reading a specific line from a file
+3) doing multiple table joins
+
+Store frequently accessed data in a temporary storage location
+
+user -> api -> (fetches data if avaliable in cache) -> then goes to db if not present in cache
+
+cache checked first, caches are faster and expensive 
+
+We donot cache all the data ( just a subset of it which is most liked to be accessed)
+
+Caches that we typically use: redis, memcached 
+
+Note: Caches are not restricted to RAM based storage.
+Any storage that is nearer and helps us avoid something expensive is a cache for us.
+
+In the simplest form , caches are just glorified hash tables.
+Some examples: 
+1) Google news: most recent news news articles are more likely to be accessed hence served from cache.
+
+2) Auth tokens: Authentication are cached in cache to avoid load on database
+[tokens are checked on every request]
+
+3) Live stream: Last 10 min of live stream is cached on CDN as it will be accessed the most
+
