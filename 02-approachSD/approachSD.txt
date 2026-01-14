@@ -1,0 +1,22 @@
+How to approach System Design?
+
+System Design is extremely practical and there is a structured way to tackle the situations.
+
+Take small steps always.
+
+Understand the problem statement :
+without having a thorough understanding of the problem at hand we would easily digress
+
+Break it down into components: to start with
+do not create components for the sake of it 
+create component that you know are must
+
+Dissect each component ( if required)
+
+For each sub component look into:
+
+Database and caching, scaling and fault tolerance, async processing(delegation), communication
+
+Repeat above for each sub component one by one
+
+Add more sub components if needed
