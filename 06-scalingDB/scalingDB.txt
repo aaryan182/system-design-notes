@@ -1,0 +1,37 @@
+Scaling Databases
+
+Databases are the most important component of any system out there. It makes or breaks any system.
+
+Hence it is critical to understand how to scale them.
+
+These techniques are applicable to most databases out there.
+
+1) Vertical Scaling - add momre CPU, RAM, Disk to the database
+                    - require downtime during reboot
+                    - gives us ability to handle scale, more load
+                    - vertical scaling has a physical hardware limitation
+
+2) Horizontal Scaling - Raad Replicas 
+                    - when read: write = 90:10
+                    - we move reads to other databases so that master is free to do writes 
+                    - API Servers should know which DB to connect to get things done 
+
+Replication - changes on one database(master) needs to be sent to replica to maintain consistency 
+
+
+Two modes of replicaiton: 
+synchronous replication => strong consistency, zero   replication log, slower writes 
+
+asynchronous replication => weak consistency, replication log, faster writes
+
+
+Horizontal Scaling: Sharding 
+Because one node cannot handle the data/load we split it into multiple exclusive subsets , writes on a particular row/document will go to one particular shard.
+
+This way we scale our overall database load
+
+Note: Shards are independent no replication between them 
+API server needs to know whom to connect to, to get things done.
+
+Note: some databases has a proxy that takes care of routing.
+Each shard can have its own replica(if needed)
