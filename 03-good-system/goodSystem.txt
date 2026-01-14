@@ -1,0 +1,10 @@
+How do we know that we have built a good system?
+
+Every system is "infinitely" buildable and hence knowing when to stop the evolution is important 
+
+Key pointers that will help:
+1) we broke our system into components
+2) every component has a clear set of responsibilities(exclusive)
+3) for each component we have slight technincal details figuered out
+4) each component (in isolation) is:
+scalable(horizontally), fault tolerant, available 
