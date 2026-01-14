@@ -1,0 +1,48 @@
+Populating the cache
+
+Cache between the API server and the database. 
+
+IN cache whenever we set something in cache we set an expiry.
+
+There are two ways to populate the cache: 
+
+1) Lazy population(most popular):
+    Read first go to the cache 
+    if data exist return data
+    else
+        go to database/ do heavy operation 
+        persist in the cache 
+        return data
+
+Example: Caching Blogs
+
+Fetching a blog from DB is expensive (multiple joins) hence when someone accesses it we fetch from DB and cache it on redis
+Subsequent requests are served from cache.  
+
+2) Eager population:
+One way) writes go to both the database and cache in the same request call 
+example: live cricket score
+thousands of people are watching cricket score .YOu will be serving it from cache so why not update cache & db at once and save the cache miss.
+
+second way) Proactively push data to cache 
+because you anticipate the need 
+example: when a celebrity tweets/ post something 
+when account with 100k followers post something Proactively push it to the cache 
+we will anyway need it and we save a cache miss.
+
+
+
+
+Topic) Scaling Cache 
+cache is just like a database, hence scaling technique for a cache like redis is similar to scaling a database.
+
+Vertical scaling = make you cache bigger to handle more data/load
+
+Horizontal scaling = replica(scaling reads)
+same data replicated across multiple nodes so that reads could scale.
+
+Horizontal scaling - sharding (scaling writes)
+data partitioned across multiple shards so that writes could scale.
+each shard can have its own replica
+
+shards are mutually exclusive.
