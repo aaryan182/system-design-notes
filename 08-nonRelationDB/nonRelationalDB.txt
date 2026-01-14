@@ -1,0 +1,34 @@
+It is a very broad generalization of databases that are non relational(MySQL, PostgresSQL etc) but this does not mean all non relational databases are similar.
+
+What makes Non relational databases interesting ? 
+Most non relational databases shard out of the box 
+                    Horizontal Scalability
+
+
+3 important types of nosql databases
+
+Document DBs => MongoDB, Elastic search
+    - Mostly JSON based
+    - Supports complex queries ( almost like relational sql databases )
+    - Parital updates to document possible
+    - closest to relational DB
+
+
+Key Value Stores: Redis, DynamoDB, Aerospike
+
+- extremely simple databases
+- Limited functionalities (GET, PUT, DEL)
+- Meant for key based access pattern
+- does not support complex queries(aggregations)
+- can be heavily sharded and partitioned
+- use case: profile data, order data, auth data, messages etc
+
+We can use relational databases and document DBs as KV Stores
+
+
+Graph Databases ( Neo4j, Neptune, Dgraph)
+
+What if our graph data structure had a database 
+- it stores data that are represented as nodes, edges and relations 
+- great for running complex graph algorithms
+- powerful to model social networks , recommendations and fraud detection
