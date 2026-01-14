@@ -1,0 +1,18 @@
+Databases are most critical component of any system. They make or break a system.
+
+Data is stored & represented in rows and columns.
+
+Relational Databases provides Transactions
+
+ACID
+Atomicity, Consistency, Isolation, Durability
+
+Atomicity : All statements witin a transaction takes effect or none
+Consistency :  data will never go incorrect no matter what, constraints, cascades, triggers 
+Durability: whene transactions commits the changes outlives 
+Isolation: when multiple transacations are executing parallely the isolation level determines how much changes of one transaction are visible to other
+
+Isolation has 4 levels
+
+We pick Relational databases for relations and acid.
+
