@@ -1,0 +1,20 @@
+What is system Design?
+
+Set of requirements -> 
+
+decide architecture, 
+decide components, 
+decide modules
+
+
+How the above three interact with each other => To solve the problem  => It is almost Product Development
+
+
+Every single tech product is a system this has been designed. Companies are building product and need we all to design it.
+
+What to do when we design a system?
+- break down problem statement into solvable sub problems
+- decide on key components and responsibilities
+- decide on boundaries of each components
+- touch upon key challenges in scaling it
+- make our architecture faulttolerant and available 
