@@ -1,0 +1,35 @@
+Sharding: method of distributing data across multiple machines.
+Partitioning: splitting a subset of data within the same instance
+
+How a database is scaled?
+A database server is just a database process(mysqld, mongod) running on an EC2 instance.
+
+We put our database in production serving real traffic.
+
+We are getting more users that we DB is unable to manage we scale up our DB , give it more CPU, RAM and DISK
+
+Our Product went viral and our bulky database is unable to handle the load, so we scale up again.
+
+But after a cetain stage we know we would not be able to scale up our DV because vertical scaling is physical limitation.
+
+So we will have to resort to horizontal scaling.
+
+Say one DB server was handling 1000WPS and we cannot scale up beyond that but we are getting 1500 WPS we scale horizontally and split the data.
+
+By adding one more database server, we reduced the loas to 750WPS on each node and thus handled higher throughput.
+
+Each database server is thus a shard and we say that the data is partitioned. Overall a database is sharded while the data is partitioned.
+
+
+Overall  a database is sharded while the data is partitioned.
+
+
+How to partition the data ?
+There are two categories of data partitioning:
+Horizontal partitioning, Vertical partitioning
+
+
+
+Advantages of sharding: handle large reads and writes, increase overall storage capacity, higher availability 
+
+Disadvantages of sharding: operationally complex , cross shared queries expensive
