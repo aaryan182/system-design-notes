@@ -1,0 +1,66 @@
+Caching at different levels:
+
+Most common cache we saw was redis but that is not the only type of cache out there or not the only place that can be used as a cache.
+
+Literally every piece| component in our infrastructure can be used as a cache.
+But should we? 
+it depends on the guarantees
+also too much caching is bad => stale data and invalidation
+
+
+Client side caching: 
+Storing frequently accessed data on client side.
+eg browser, mobile devices etc
+
+- cache near constant data (eg: images, js files, user information etc)
+- it should be okay serving cached info (stale)
+- invalidation by time(expiry)
+
+Massive performance boost, as we need not make any request to backend.
+
+
+CDN(Content Delivery Network): 
+
+CDNs are a set of servers distributed across the world. Request from a user, goes to the nearest CDN server and hence user gets very quick response.
+
+US folks getting images from US servers is faster than fetching it from India.
+CDN is live streaming, serving images, videos, audio, bundles etc
+CDN also used for caching.
+
+
+CDN does lazy cache population.
+
+User request comes to CDN => closest server 
+CDN server checks if it has the data 
+if yes return the data 
+else CDN makes the same request to origin server (actual server)
+    gets the response
+    caches the response
+    return the data
+
+
+Like any other cache, when we put data on CDN we set an expiry to it.(post which CDN deletes data)
+
+
+
+Remote Cache(Redis) 
+
+Remote cache is centralized cache that we most commonly use (redis). Multiple API servers use it to store frequently accessed data.
+
+Expensive and store data in main memory
+
+Every key stored should have an expiration(memory)
+size of cache is relatively very small as compared to other caches.
+
+
+
+Database caching: 
+example: 
+Instead of computing total posts by users everytime we store 'total posts' as column and update it once a while ( saves on expensive DB computation)
+
+
+Note: There are other places like load balancer where we can cache things like session information
+
+Note: we can cache some data at every single component in the system 
+but should we do it ?
+Not neccessarily ( it is very use case specific and subject to tolerance level of staleness of the served data)
