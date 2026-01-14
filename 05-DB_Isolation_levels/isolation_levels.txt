@@ -1,0 +1,14 @@
+Relational databases provides ACID guarantees and I in ACID is isolation and isolation levels helps us tune them.
+
+Isolation levels dictate how much one transaction knows about the other.
+
+Repeatable Read => COnsistent reads within same transaction 
+even if other transaction committed 1st transaction would not see the changes (if value already read). It is default.
+
+Read Committed => Reads within the same transcation always reads fresh value 
+consequence: mulitple reads within the same transacation are inconsistent
+
+Read Uncommitted => reads even Uncommitted values from other transactions
+"dirty read"
+
+Serializable => Every read is a locking read and while one transacation read, others will have to wait. It depends on engine.
