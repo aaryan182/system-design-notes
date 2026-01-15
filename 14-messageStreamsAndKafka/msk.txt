@@ -1,0 +1,53 @@
+Message streams are similar to message queues with a few differences to understand.
+
+Example: we are building medium and upon every blog published we 
+- need to index it in search engine(elastic search)
+- need to do count ++ for user's total blogs
+
+Approach 1: We use one message broker and add logic in consumer 
+
+client -> api -> rabbit mq -> consumer -> index elastic search -> count++ main db -> api -> client
+
+consumers are doing two things: count ++ and index 
+
+Issue: what if write to one succeeded but other one failed. 
+count ++ is there but not there in main search 
+or there in search but count does not match in main DB
+
+
+Approach 2: Two brokers and two set of consumers
+
+client -> api -> rabbitmq1 -> search -> index -> elastic search 
+            -> rabbitmq2  -> counter -> index -> main db -> api -> client
+
+API server writes to two brokers and each has its own set of consumers.
+
+This still does not solve the problem? when API server writes to two Rabbit MQ, one of them fails. we end up in same spot .
+
+
+Hence we want "write to one" and "read by many" semantic. This is where message streams come into the picture (kafka , kinesis)
+
+
+Message Streams: Message streams are similar to message brokers with one change , multiple types of consumers read the same message.
+
+
+Approach 3: using streams and multiple types of consumers 
+
+client -> API -> kafka -> search -> index -> elastic search 
+            -> kafka -> counter -> index -> main db -> api -> client
+
+API server pushes one message in kafka search and counter service both reading from the same topic.
+
+
+
+Kafka Essentials: 
+is a message stream that hold the messages.
+Internally kafka has topic 
+Every topic has 'n' partitions. Message is sent to a topic and depending on the configured hash key and it is put inot a partition. 
+
+Within partition messages are ordered. No ordering guarantee across partitions.
+
+Limitations of kafka: 
+
+# cosumers = # partitions
+So parallelism of kafka is limited by the number of partitions in kafka for that particular topic.
