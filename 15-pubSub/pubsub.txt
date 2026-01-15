@@ -1,0 +1,21 @@
+Both message brokers and message streams requires consumers to "pull" the messages out. 
+
+Advantage: consumers can pull at their own pace , consumers do not get ovewhelmed by messages.
+
+Disadvantage: consumption log when high ingestion.
+
+Realtime PubSub - makes things reactive instead of continous polling 
+
+what if we want low latency & zero lag? => realtime pubsub
+
+
+Instead of consumers pulling the message, the message is pushed to them. 
+eg redis pubsub
+
+
+This way we get really fast delivery time but it can overwhelm the consumers.
+-> what if consumers recieve messages faster than they could process?
+
+usecase: message broadcast, configuration push 
+
+All server recieves updates without polling for data.
