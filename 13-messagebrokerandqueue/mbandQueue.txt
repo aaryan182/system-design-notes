@@ -1,0 +1,54 @@
+Asynchronous Processing 
+User sent the request and we immediately handle it synchronously
+
+Example: loading insta feed is synchronous, login on website is synchronous, payments are synchronous
+
+Most interactions on web are synchronous
+
+Somethings that should not be synchronous: 
+spinning a virtual machine: spinning up vm takes minutes and user will not wait on the same page waiting for the response.
+
+Instead the user would love around and keep checking status once in a while. This is asynchronous.
+
+Client -> API -> DB -> Broker -> worker 
+                              -> worker
+                              -> worker
+then update DB and return to client
+
+ 
+Message Queues: 
+
+Brokers help two services/ applicaitons communicate through messages. We use message brokers when we want to do something asynchronously.
+
+1) Long running task 
+2) Trigger dependent tasks across machines
+
+Example: Video Processing
+
+Message Queues are also called as Message Brokers
+
+Features of Message Broker: 
+1) Brokers help us connect different sub - systems 
+
+2) Brokers act as a buffer for the messages 
+that is consumers can consume at their own pace. ( no synchronous load on connected systems )
+
+example: notification system 
+
+
+3) Brokers can retain messages for "n" days (depends on broker we use )
+4) Brokers can re-queue the message if not deleted .
+
+example: consumer read the message but before it would delete it crashed 
+
+
+example: Auto subtitle ( auto captioning)
+
+1) user uploads video to S3 through video service 
+2) video service puts a message(after upload completes)  to broker
+3) and returns response to the user 
+    user sees upload complete
+4) message is asynchronously read by 'captioner' service
+5) captioner downloads the video
+6) captioner generates captions and updates in the DB
+7) user now sees caption button enabled 
