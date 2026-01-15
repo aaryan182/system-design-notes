@@ -14,18 +14,22 @@
 10. [Caching Fundamentals](#10-caching-fundamentals)
 11. [Populating Cache](#11-populating-cache)
 12. [Caching at Different Levels](#12-caching-at-different-levels)
+13. [Message Brokers and Queues](#13-message-brokers-and-queues)
+14. [Message Streams and Kafka](#14-message-streams-and-kafka)
+15. [Pub/Sub Systems](#15-pubsub-systems)
 
 ---
 
 ## Overview
 
-This repository contains comprehensive notes and concepts related to System Design, covering fundamental principles, database technologies, caching strategies and scalability patterns. Each topic is organized into dedicated directories with detailed explanations.
+This repository contains comprehensive notes and concepts related to System Design, covering fundamental principles, database technologies, caching strategies, and asynchronous communication patterns. Each topic is organized into dedicated directories with detailed explanations.
 
 ```mermaid
 graph TD
     A[System Design] --> B[Foundational Concepts]
     A --> C[Database Systems]
     A --> D[Caching Strategies]
+    A --> E[Messaging Systems]
     
     B --> B1[What is System Design]
     B --> B2[Approach & Methodology]
@@ -42,10 +46,15 @@ graph TD
     D --> D2[Cache Population]
     D --> D3[Multi-Level Caching]
     
+    E --> E1[Message Brokers & Queues]
+    E --> E2[Message Streams & Kafka]
+    E --> E3[Pub/Sub Systems]
+    
     style A fill:#f9f,stroke:#333,stroke-width:4px
     style B fill:#bbf,stroke:#333,stroke-width:2px
     style C fill:#bfb,stroke:#333,stroke-width:2px
     style D fill:#fbb,stroke:#333,stroke-width:2px
+    style E fill:#ffb,stroke:#333,stroke-width:2px
 ```
 
 ---
@@ -2591,6 +2600,529 @@ graph TD
     style B fill:#fff9c4,stroke:#f57f17
     style D fill:#c8e6c9,stroke:#2e7d32
     style F fill:#ffcdd2,stroke:#c62828
+```
+
+---
+
+## 13. Message Brokers and Queues
+
+Message brokers enable asynchronous communication between services, allowing systems to handle long running tasks without blocking users. They act as intermediaries that facilitate communication through message passing.
+
+### Synchronous vs Asynchronous Processing
+
+**Synchronous Operations** - Immediate handling with user waiting for response:
+- Loading Instagram feed
+- Website login
+- Payment processing
+- Most web interactions
+
+**Asynchronous Operations** - Tasks that take time, user checks status later:
+- Spinning up virtual machines (takes minutes)
+- Video processing
+- Batch operations
+- Background tasks
+
+### Architecture Pattern
+
+```mermaid
+graph LR
+    A[Client] --> B[API Server]
+    B --> C[Database]
+    B --> D[Message Broker]
+    D --> E[Worker 1]
+    D --> F[Worker 2]
+    D --> G[Worker 3]
+    E --> C
+    F --> C
+    G --> C
+    C --> B
+    B --> A
+    
+    style D fill:#fff9c4,stroke:#f57f17
+    style E fill:#c8e6c9,stroke:#2e7d32
+    style F fill:#c8e6c9,stroke:#2e7d32
+    style G fill:#c8e6c9,stroke:#2e7d32
+```
+
+### When to Use Message Queues
+
+1. **Long Running Tasks** - Operations that take significant time to complete
+2. **Trigger Dependent Tasks** - Coordinate work across multiple machines
+3. **Decoupling Services** - Allow systems to work independently
+
+### Key Features of Message Brokers
+
+#### 1. Service Connectivity
+Brokers help connect different sub-systems, enabling loose coupling between components.
+
+#### 2. Buffer Mechanism
+Messages are buffered, allowing consumers to process at their own pace without synchronous load on connected systems.
+
+**Example**: Notification system where messages queue up and are sent as the notification service can handle them.
+
+#### 3. Message Retention
+Brokers can retain messages for configurable periods (depends on broker implementation), providing durability and recovery options.
+
+#### 4. Message Re-queuing
+If a message is not acknowledged or deleted, it can be re-queued automatically.
+
+**Example**: Consumer reads a message but crashes before deleting it - the message returns to the queue.
+
+### Use Case Example: Auto Subtitle Generation
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant VideoService
+    participant S3
+    participant Broker
+    participant Captioner
+    participant Database
+    
+    User->>VideoService: Upload video
+    VideoService->>S3: Store video
+    S3-->>VideoService: Upload complete
+    VideoService->>Broker: Put message
+    VideoService-->>User: Upload complete
+    Note over User: User sees upload complete
+    
+    Broker->>Captioner: Async message read
+    Captioner->>S3: Download video
+    Captioner->>Captioner: Generate captions
+    Captioner->>Database: Update with captions
+    Note over User: User sees caption button enabled
+```
+
+**Flow**:
+1. User uploads video to S3 through video service
+2. Video service puts a message to broker after upload completes
+3. Returns response to user immediately
+4. User sees "upload complete"
+5. Message is asynchronously read by captioner service
+6. Captioner downloads the video
+7. Captioner generates captions and updates the database
+8. User now sees caption button enabled
+
+### Message Queue Benefits
+
+```mermaid
+graph TD
+    A[Message Broker Benefits] --> B[Decoupling]
+    A --> C[Scalability]
+    A --> D[Reliability]
+    A --> E[Flexibility]
+    
+    B --> B1[Services work independently]
+    B --> B2[No tight coupling]
+    
+    C --> C1[Scale consumers independently]
+    C --> C2[Handle variable load]
+    
+    D --> D1[Message persistence]
+    D --> D2[Retry mechanism]
+    
+    E --> E1[Multiple consumers]
+    E --> E2[Easy to add new consumers]
+    
+    style A fill:#64b5f6,stroke:#1976d2
+```
+
+---
+
+## 14. Message Streams and Kafka
+
+Message streams extend message queues with "write once, read by many" semantics, solving the problem of multiple consumers needing to process the same message independently.
+
+### The Problem: Multiple Consumers
+
+**Example**: Building a blogging platform (like Medium) where upon blog publication:
+- Need to index it in search engine (Elasticsearch)
+- Need to increment user's total blog count
+
+### Approach 1: Single Broker with Combined Logic
+
+```mermaid
+graph LR
+    A[Client] --> B[API]
+    B --> C[RabbitMQ]
+    C --> D[Consumer]
+    D --> E[Index to Elasticsearch]
+    E --> F[Increment count in DB]
+    F --> G[Main DB]
+    G --> B
+    B --> A
+    
+    style C fill:#fff9c4,stroke:#f57f17
+```
+
+**Issue**: What if one operation succeeds but the other fails?
+- Count incremented but not in search index
+- In search index but count doesn't match in database
+
+### Approach 2: Two Brokers and Two Consumer Sets
+
+```mermaid
+graph LR
+    A[Client] --> B[API]
+    B --> C[RabbitMQ 1]
+    B --> D[RabbitMQ 2]
+    C --> E[Search Consumer]
+    D --> F[Counter Consumer]
+    E --> G[Elasticsearch]
+    F --> H[Main DB]
+    H --> B
+    B --> A
+    
+    style C fill:#fff9c4,stroke:#f57f17
+    style D fill:#fff9c4,stroke:#f57f17
+```
+
+**Issue**: Still doesn't solve the problem - API server writes to two brokers, if one fails, we end up in the same situation.
+
+### Approach 3: Message Streams (Kafka)
+
+**Solution**: "Write to one" and "read by many" semantic
+
+```mermaid
+graph LR
+    A[Client] --> B[API]
+    B --> C[Kafka Topic]
+    C --> D[Search Consumer]
+    C --> E[Counter Consumer]
+    D --> F[Elasticsearch]
+    E --> G[Main DB]
+    G --> B
+    B --> A
+    
+    style C fill:#c8e6c9,stroke:#2e7d32
+```
+
+API server pushes one message to Kafka. Both search service and counter service read from the same topic independently.
+
+### Message Streams vs Message Queues
+
+```mermaid
+graph TD
+    A[Comparison] --> B[Message Queues]
+    A --> C[Message Streams]
+    
+    B --> B1[One message, one consumer]
+    B --> B2[Message deleted after read]
+    B --> B3[RabbitMQ, AWS SQS]
+    
+    C --> C1[One message, many consumers]
+    C --> C2[Message retained]
+    C --> C3[Kafka, AWS Kinesis]
+    
+    style B fill:#fff9c4,stroke:#f57f17
+    style C fill:#c8e6c9,stroke:#2e7d32
+```
+
+### Kafka Essentials
+
+**Core Concepts**:
+- Kafka is a message stream that holds messages
+- Internally organized into **topics**
+- Each topic has **n partitions**
+- Messages sent to a topic are distributed to partitions based on hash key
+- **Within partition**: messages are ordered
+- **Across partitions**: no ordering guarantee
+
+```mermaid
+graph TD
+    A[Kafka Topic] --> B[Partition 0]
+    A --> C[Partition 1]
+    A --> D[Partition 2]
+    A --> E[Partition N]
+    
+    B --> B1[Message 1]
+    B --> B2[Message 2]
+    B --> B3[Message 3]
+    
+    C --> C1[Message 4]
+    C --> C2[Message 5]
+    
+    D --> D1[Message 6]
+    D --> D2[Message 7]
+    D --> D3[Message 8]
+    
+    style A fill:#c8e6c9,stroke:#2e7d32
+    style B fill:#e1f5ff,stroke:#01579b
+    style C fill:#e1f5ff,stroke:#01579b
+    style D fill:#e1f5ff,stroke:#01579b
+    style E fill:#e1f5ff,stroke:#01579b
+```
+
+### Kafka Architecture
+
+```mermaid
+sequenceDiagram
+    participant Producer
+    participant Topic
+    participant Partition1
+    participant Partition2
+    participant Consumer1
+    participant Consumer2
+    
+    Producer->>Topic: Send message with key
+    Topic->>Partition1: Route based on hash(key)
+    Topic->>Partition2: Route based on hash(key)
+    
+    Consumer1->>Partition1: Read messages
+    Consumer2->>Partition2: Read messages
+    
+    Note over Partition1: Ordered within partition
+    Note over Consumer1,Consumer2: Parallel consumption
+```
+
+### Limitations of Kafka
+
+**Key Constraint**: Number of consumers = Number of partitions
+
+```
+# consumers = # partitions
+```
+
+**Implication**: Parallelism of Kafka is limited by the number of partitions configured for that particular topic.
+
+**Example**:
+- Topic with 4 partitions can have maximum 4 consumers in a consumer group
+- 5th consumer would remain idle
+- To increase parallelism, need to increase partitions (cannot be done dynamically without downtime in most cases)
+
+### Kafka vs Traditional Message Queues
+
+| Feature | Message Queues (RabbitMQ) | Message Streams (Kafka) |
+|---------|---------------------------|-------------------------|
+| **Consumption Model** | One message to one consumer | One message to many consumers |
+| **Message Lifecycle** | Deleted after consumption | Retained for configured period |
+| **Ordering** | Queue order maintained | Order within partition only |
+| **Scalability** | Scale consumers freely | Limited by partition count |
+| **Use Case** | Task distribution | Event streaming, multiple processors |
+
+### When to Use Kafka
+
+- Multiple independent systems need the same data
+- Event sourcing architecture
+- Log aggregation
+- Stream processing
+- Real-time analytics
+- Change Data Capture (CDC)
+
+---
+
+## 15. Pub/Sub Systems
+
+Pub/Sub (Publish/Subscribe) systems provide real-time, push-based message delivery, contrasting with the pull-based approach of message queues and streams.
+
+### Pull vs Push Models
+
+#### Pull Model (Queues & Streams)
+
+```mermaid
+sequenceDiagram
+    participant Consumer
+    participant Broker
+    
+    loop Continuous Polling
+        Consumer->>Broker: Request messages
+        Broker-->>Consumer: Return messages (if any)
+        Consumer->>Consumer: Process messages
+        Note over Consumer: Wait/Poll interval
+    end
+```
+
+**Advantages**:
+- Consumers pull at their own pace
+- Consumers don't get overwhelmed
+- Back-pressure handling
+
+**Disadvantages**:
+- Consumption lag during high ingestion
+- Polling overhead
+- Not truly real-time
+
+#### Push Model (Pub/Sub)
+
+```mermaid
+sequenceDiagram
+    participant Publisher
+    participant PubSub
+    participant Subscriber1
+    participant Subscriber2
+    participant Subscriber3
+    
+    Publisher->>PubSub: Publish message
+    PubSub->>Subscriber1: Push message
+    PubSub->>Subscriber2: Push message
+    PubSub->>Subscriber3: Push message
+    
+    Note over Subscriber1,Subscriber3: Instant delivery
+```
+
+**Advantages**:
+- Very low latency
+- Zero lag
+- Truly reactive
+- No polling overhead
+
+**Disadvantages**:
+- Can overwhelm consumers
+- No natural back-pressure
+- Consumers must handle messages faster than they arrive
+
+### The Trade-off
+
+```mermaid
+graph TD
+    A[Messaging Trade-offs] --> B[Pull Model]
+    A --> C[Push Model]
+    
+    B --> B1[Controlled pace]
+    B --> B2[Back-pressure]
+    B --> B3[Higher latency]
+    B --> B4[Polling overhead]
+    
+    C --> C1[Low latency]
+    C --> C2[Zero lag]
+    C --> C3[Can overwhelm]
+    C --> C4[No back-pressure]
+    
+    style B fill:#fff9c4,stroke:#f57f17
+    style C fill:#c8e6c9,stroke:#2e7d32
+```
+
+### Real-time Pub/Sub: When to Use
+
+**Question**: What if we want low latency and zero lag?
+
+**Answer**: Real-time Pub/Sub systems
+
+Instead of consumers pulling messages, messages are pushed to them immediately.
+
+### Example: Redis Pub/Sub
+
+```mermaid
+graph TD
+    A[Publisher] --> B[Redis Pub/Sub]
+    B --> C[Subscriber 1]
+    B --> D[Subscriber 2]
+    B --> E[Subscriber 3]
+    B --> F[Subscriber N]
+    
+    style B fill:#c8e6c9,stroke:#2e7d32
+    style C fill:#e1f5ff,stroke:#01579b
+    style D fill:#e1f5ff,stroke:#01579b
+    style E fill:#e1f5ff,stroke:#01579b
+    style F fill:#e1f5ff,stroke:#01579b
+```
+
+### Use Cases for Pub/Sub
+
+#### 1. Message Broadcasting
+Send the same message to multiple subscribers instantly.
+
+#### 2. Configuration Push
+```mermaid
+sequenceDiagram
+    participant ConfigService
+    participant PubSub
+    participant Server1
+    participant Server2
+    participant Server3
+    
+    ConfigService->>PubSub: Publish config update
+    PubSub->>Server1: Push update
+    PubSub->>Server2: Push update
+    PubSub->>Server3: Push update
+    
+    Note over Server1,Server3: All servers receive updates<br/>without polling
+```
+
+All servers receive configuration updates instantly without polling for data.
+
+#### 3. Real-time Notifications
+- Chat applications
+- Live dashboards
+- Real-time alerts
+- Live score updates
+
+### The Challenge: Consumer Overload
+
+**Problem**: What if consumers receive messages faster than they can process?
+
+```mermaid
+graph LR
+    A[High Rate Publisher] -->|1000 msgs/sec| B[Pub/Sub]
+    B -->|1000 msgs/sec| C[Slow Consumer]
+    
+    C -->|Can process 100 msgs/sec| D[Bottleneck]
+    
+    style D fill:#ffcdd2,stroke:#c62828
+```
+
+**Solutions**:
+1. **Rate limiting** at publisher side
+2. **Consumer scaling** - multiple consumers
+3. **Buffering layer** - add queue between pub/sub and consumers
+4. **Hybrid approach** - pub/sub for notification, queue for processing
+
+### Comparison of Messaging Systems
+
+| Feature | Message Queues | Message Streams | Pub/Sub |
+|---------|---------------|-----------------|---------|
+| **Model** | Pull | Pull | Push |
+| **Latency** | Medium | Medium | Very Low |
+| **Consumption** | One-to-one | One-to-many | One-to-many |
+| **Persistence** | Temporary | Long-term | None (typically) |
+| **Ordering** | Yes | Per partition | No guarantee |
+| **Back-pressure** | Yes | Yes | No |
+| **Use Case** | Task queues | Event streaming | Real-time broadcast |
+| **Examples** | RabbitMQ, SQS | Kafka, Kinesis | Redis Pub/Sub, Cloud Pub/Sub |
+
+### Hybrid Architecture
+
+```mermaid
+graph TD
+    A[Publisher] --> B[Pub/Sub]
+    B --> C[Subscriber 1: Fast]
+    B --> D[Subscriber 2: Slow]
+    
+    D --> E[Message Queue]
+    E --> F[Worker Pool]
+    F --> G[Process at own pace]
+    
+    style B fill:#c8e6c9,stroke:#2e7d32
+    style C fill:#e1f5ff,stroke:#01579b
+    style E fill:#fff9c4,stroke:#f57f17
+    style F fill:#e1f5ff,stroke:#01579b
+```
+
+**Best of Both Worlds**:
+- Use Pub/Sub for immediate notification
+- Use Message Queue for actual heavy processing
+- Fast subscribers process directly
+- Slow subscribers enqueue for later processing
+
+### Summary: Choosing the Right System
+
+```mermaid
+flowchart TD
+    A[Need Async Communication?] -->|Yes| B{Real-time Required?}
+    
+    B -->|Yes| C{Can consumers<br/>handle rate?}
+    B -->|No| D{Multiple processors<br/>for same data?}
+    
+    C -->|Yes| E[Pub/Sub]
+    C -->|No| F[Hybrid: Pub/Sub + Queue]
+    
+    D -->|Yes| G[Message Streams<br/>Kafka]
+    D -->|No| H[Message Queues<br/>RabbitMQ]
+    
+    style E fill:#c8e6c9,stroke:#2e7d32
+    style F fill:#fff9c4,stroke:#f57f17
+    style G fill:#64b5f6,stroke:#1976d2
+    style H fill:#ffcc80,stroke:#e65100
 ```
 
 ---
