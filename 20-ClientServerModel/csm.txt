@@ -1,0 +1,49 @@
+Client Server Model
+
+Most common way for two machines to talk to each other. 
+eg: give me my profile info, delete the post, spin up new server 
+
+
+The communication happens over the common network connecting the two.
+Two protocols to exchange data TCP and UDP -> use almost 99.99% times use this 
+
+
+Some important properties of TCP: 
+- TCP connection requires 3-way handshake  for setup
+- TCP connection requires 2-way handshake for teardown
+- TCP connection does not break immediately after data is exchanged -> breaks because of network interruption , breaks because of server/client initiated it 
+
+Hence connection remains open almost forever.
+
+Protocol over TCP => TCP does not dictate what data can be sent over it. Common format agreed upon by client & server is called a protocol : HTTP
+
+
+
+
+HTTP -> is just a format that client and server understands . We can define our own format and make 
+- our client send data to it 
+- our server parses and process it 
+
+Properties of HTTP 1.1:
+There are many versions of it - HTTP 1.1 / HTTP 2 / HTTP 3 etc.
+
+HTTP 1.1 is the most commonly used one 
+1. For client and server to talk over HTTP 1.1,  they need to establish TCP connection . 
+
+2. Connection is typically terminated once response is sent to client. 
+
+3. almost new connection for every request/ response (little expensive).
+
+4. Hence people pass "connection: keep alive" in header which tells client and server to not close the connection. ( depends if server follows it or not)
+
+
+
+
+Websockets -> are meant to do bi-directional communication
+Key feature -> server can proactively send data to client , without client asking for it 
+
+Because there is no need for setting up TCP every single time we get really a low latency in communication.
+
+Amy where we need "realtime" , "low latency" communication for our end user over the internt , we use websockets.
+
+eg chat, realtime likes on live stream, stock market ticks etc
