@@ -1,0 +1,28 @@
+Circuit Breakers prevent cascading failures.
+
+Say , we are building social network that serves feed for a user 
+1) user's request comes to feed service
+2) feed service pull some info from recommendation some from trending 
+3) recommendation and trending both relies on profile service => to get profile detail of user who made the post 
+4) recommendation and trending depends on past service => to get details of the post 
+
+There are lots of other servives that depend on profile service.
+
+If profile service DB is overwhelmed it slows down and transitively all services dependent on it are affected.
+
+1. complete outage
+2. unresponsiveness
+
+
+Idea: What if we make call to a service only if it is healthy?
+This is a Circuit breaker. wE break the circuit down when we see the failure cascade 
+
+Circuit breakers prevent entire product from collapsing by preventing cascading failures
+
+How is it implemented?
+A common database holds the settings for each breaker.
+services before making calls to others checks the config -> cache the config to avoid checking the DB
+
+circuit breake DB 
+
+In case of outage of service , we mark the service as unhealthy and dont make calls to it.
