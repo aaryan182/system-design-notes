@@ -1,0 +1,55 @@
+Load Balancers 
+
+Important component in distributed systems that make it easy to scale the load horizontally. 
+
+Load balancer is the only point of contact. 
+Every load balancer has either 
+1) Static IP 
+2) Static DNS name 
+
+It allows clients to talk to it (users/ servers)
+
+
+client -> LB -> servers
+
+Load Balancer hides the #servers that are "behind" it
+allowing us to add many servers as possible => Horizontal scalability
+
+Without client knowing about it: 
+Request response flow: 
+1) client already has IP/domain of load balancer 
+    eg: auth.example.com
+
+2) client makes API call and it comes to load balancer 
+    eg: GET auth.example.com/login
+
+3) load balancer picks one server and makes the same Request
+4) load balancer gets the response from the server 
+5) load balancer responds back to the client 
+
+
+Job of the load balancer is to "balance" the load. It depends on how it picks teh server to forward the request. (configurable)
+
+
+Load balancing Algorithms : 
+
+Round Robin 
+Distribute the load iteratively 
+
+Weighted Round Robin:
+Distribute the load iteratively but as per weights 
+
+Least connections: pick the server having the least connections from the load balancer  
+when response time has a big variance 
+
+
+
+Hash Based Routing: (random enough)
+Hash of some attribute 
+(ip, user id, url) determines which server to pick 
+
+
+Key Advantages of Load Balancers:
+scalability: with more servers behind load balancer we can now handle more requests.
+
+availability: even if one of the servers crash, it does not take down our entire system. Load balancer will forward request to other healthy servers. Improving the availability of the system.
