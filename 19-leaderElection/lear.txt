@@ -1,0 +1,31 @@
+Leader election for Auto recovery
+
+
+We have a bunch of servers serving HTTP requests.
+When one of them goes down we have to spin up a new one. Doing this is responsiblity of another module say orchestration.
+
+Client -> LB -> Servers -> Orchestrator 
+
+Keep an eye on the server. WHen one goes down orcestrator spins one and add. 
+
+NO human intervantion and minimal time outage.
+
+But what if orchestrator is down? Who monitors it?
+
+Hence we need an automated way to recover the system => WHen one orchestrator is down somehow other orchestrator comes back up and takes responsiblities.
+
+ 
+Leader Follower setup : We run orchestrator in Leader follower mode. multiple nodes running the orchestrator code. One leader while others are workers/follower. 
+
+Leader keeps an eye on workers. If worker dies leader spins up new one. Workers ping the servers and checks if they are healthy. 
+
+If orchestrator worker finds a backend server is unhealthy, it spins up new one 
+if orchestrator leader finds that orch worker is unhealthy it spins up new one 
+if orch worker finds orch leader is dead, 
+they trigger a leader election and system is auto recovered.
+
+
+
+How workers will choose a leader depends on the leader election algo ? 
+
+Note: This is a generic concept and we can apply it to any system that needs an ability to auto recover.
