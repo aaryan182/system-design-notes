@@ -1,0 +1,67 @@
+Big Data Processing 
+
+When one machine is not enough to process the data we divide and conquer -> this essentially is big data processing. Companies use this to process massive amount of data and extract insights out of it, train ML models, move data across databases and much more. 
+
+WHen too much data needs to be processed quickly we use big data tools.
+
+* all these fancy processing on commodity hardware
+
+Counting word frequency : Given a 1 TB dataset find frequency of each word 
+
+Approach 1: simple
+1. load data on one machine (disk)
+2. read it character by character
+3. when space is encountered update on in-mem hash table 
+do count++ 
+
+This is a simple approach that runs in O(n) time approx. 
+But becasue only one machine is doing it it will take a long time so can we parallize it ? yes we add threads
+
+Approach 2: threads
+
+We can easily parallize the code each thread can handle a chunk of the file/dataset and can do word_freq[word] += 1 
+
+But what if the dataset is not 1TB but 100TB?
+
+- something that does not fit on a single machine or even if it did it is slow to compute (big data or smaller hardware)
+
+- threads are bounded by CPU cores 
+- limited computational capabilities of underlying hardware 
+
+
+Instead of core machine , can we distribute the workload across multiple(often smaller) machines and leverage parallelism 
+
+
+Approach 3: Distributed Computing 
+
+
+more computers, more CPU, more processing 
+
+idea: split the file into 'partitions'
+
+distribute the partitions across all servers , let each server compute word freq independently. send word freq to one server [coordinator] and merge them.
+
+User submits the job to 'coordinator'. coordinator distributes the job across multiple machines compute and send result to coordinator. coordinator merges and returns the result to user.
+
+
+Challenges: 1) what about failures , 2) What about recovery , 3) what about completion , 4) what about scaling & distribution 
+
+Although we can always do it on our own but if there are tools to manage this for us adopt it. 
+
+Big data tools manages these complexities for us. (we just write the buisness logic)
+- distribute across machines 
+- knowing which machines are doing what 
+- retrying in case of failures 
+- reprocessing in case of crashes or corruption 
+- cleaning up the resources once job is complete
+
+
+Spark and Flink are one of the tools .
+
+Large scale data processing on commodity hardware , it has connectors to a lot of data bases and infra components . 
+Eg: combine user, order, payments  and logistics DBs and put the result in AWS redshift
+
+eg: when any activity is happening events are streamed to kakfa. In realtime enrich the events and put them in analytic DB to track in realtime.
+
+
+There are plethora of tools available each solving a niche problem. 
