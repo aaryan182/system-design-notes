@@ -17,12 +17,21 @@
 13. [Message Brokers and Queues](#13-message-brokers-and-queues)
 14. [Message Streams and Kafka](#14-message-streams-and-kafka)
 15. [Pub/Sub Systems](#15-pubsub-systems)
+16. [Load Balancers](#16-load-balancers)
+17. [Circuit Breakers](#17-circuit-breakers)
+18. [Data Redundancy and Recovery](#18-data-redundancy-and-recovery)
+19. [Leader Election for Auto Recovery](#19-leader-election-for-auto-recovery)
+20. [Client-Server Model](#20-client-server-model)
+21. [Blob Storage and S3](#21-blob-storage-and-s3)
+22. [Bloom Filters](#22-bloom-filters)
+23. [Consistent Hashing](#23-consistent-hashing)
+24. [Big Data Processing](#24-big-data-processing)
 
 ---
 
 ## Overview
 
-This repository contains comprehensive notes and concepts related to System Design, covering fundamental principles, database technologies, caching strategies, and asynchronous communication patterns. Each topic is organized into dedicated directories with detailed explanations.
+This repository contains comprehensive notes and concepts related to System Design, covering fundamental principles, database technologies, caching strategies, asynchronous communication patterns, distributed systems algorithms, and big data processing. Each topic is organized into dedicated directories with detailed explanations.
 
 ```mermaid
 graph TD
@@ -30,6 +39,9 @@ graph TD
     A --> C[Database Systems]
     A --> D[Caching Strategies]
     A --> E[Messaging Systems]
+    A --> F[Infrastructure & Resilience]
+    A --> G[Distributed Algorithms]
+    A --> H[Big Data]
     
     B --> B1[What is System Design]
     B --> B2[Approach & Methodology]
@@ -50,11 +62,27 @@ graph TD
     E --> E2[Message Streams & Kafka]
     E --> E3[Pub/Sub Systems]
     
+    F --> F1[Load Balancers]
+    F --> F2[Circuit Breakers]
+    F --> F3[Data Redundancy & Recovery]
+    F --> F4[Leader Election]
+    F --> F5[Client-Server Model]
+    F --> F6[Blob Storage & S3]
+    
+    G --> G1[Bloom Filters]
+    G --> G2[Consistent Hashing]
+    
+    H --> H1[Big Data Processing]
+    H --> H2[MapReduce & Spark]
+    
     style A fill:#f9f,stroke:#333,stroke-width:4px
     style B fill:#bbf,stroke:#333,stroke-width:2px
     style C fill:#bfb,stroke:#333,stroke-width:2px
     style D fill:#fbb,stroke:#333,stroke-width:2px
     style E fill:#ffb,stroke:#333,stroke-width:2px
+    style F fill:#e1bee7,stroke:#333,stroke-width:2px
+    style G fill:#80deea,stroke:#333,stroke-width:2px
+    style H fill:#ffcc80,stroke:#333,stroke-width:2px
 ```
 
 ---
@@ -5332,5 +5360,969 @@ flowchart TD
     style G fill:#64b5f6,stroke:#1976d2
     style H fill:#ffcc80,stroke:#e65100
 ```
+
+---
+
+
+## 22. Bloom Filters
+
+**Location:** `22-bloomFilter/bf.txt`
+
+### What are Bloom Filters?
+
+Bloom Filters are approximate data structures that can determine with 100% certainty that an element does NOT belong to a set. They are probabilistic data structures that provide space-efficient set membership testing.
+
+```mermaid
+graph LR
+    A[Query: Is X in set?] --> B{Bloom Filter Check}
+    B -->|Definitely Not| C[Return: NO - 100% Certain]
+    B -->|Maybe| D[Return: POSSIBLY - May be false positive]
+    
+    style C fill:#c8e6c9,stroke:#2e7d32
+    style D fill:#fff9c4,stroke:#f57f17
+```
+
+### The Problem: Traditional Set Storage
+
+**Example**: Instagram wants to recommend reels but avoid showing content a user has already watched.
+
+**Naive Approach**: Keep track of everything a user saw in a set.
+
+```mermaid
+flowchart TD
+    A[User watches 100s of reels daily] --> B[Store all watched post IDs]
+    B --> C[Set grows massive over time]
+    C --> D[Must load entire set in memory]
+    D --> E[Check existence is expensive]
+    E --> F[Time consuming + Memory intensive]
+    
+    style F fill:#ffcdd2,stroke:#c62828
+```
+
+**Problems**:
+- Users watch hundreds of reels every day
+- Over time, the set of all posts watched becomes huge
+- To check existence, must load the entire set in memory
+- Super expensive and time consuming
+
+### Key Insight
+
+Once something is "watched", we cannot take it back. Once a post/reel is watched, we do not remove it from the set.
+
+**This means storing actual data is not worth it** - This is the concept over which Bloom Filters are built.
+
+### How Bloom Filters Work
+
+A Bloom Filter is essentially a bit array with hash functions.
+
+```mermaid
+graph TD
+    A[Item to Add/Check] --> B[Hash Function 1]
+    A --> C[Hash Function 2]
+    A --> D[Hash Function k]
+    
+    B --> E[Bit Array Position 1]
+    C --> F[Bit Array Position 2]
+    D --> G[Bit Array Position k]
+    
+    E --> H{All bits set to 1?}
+    F --> H
+    G --> H
+    
+    H -->|Yes| I[Maybe in set]
+    H -->|No| J[Definitely NOT in set]
+    
+    style J fill:#c8e6c9,stroke:#2e7d32
+    style I fill:#fff9c4,stroke:#f57f17
+```
+
+**Example**: 8-bit array
+
+```
+Initial: [0, 0, 0, 0, 0, 0, 0, 0]
+
+After adding items:
+[1, 0, 1, 1, 0, 1, 0, 1]
+```
+
+### Advantages
+
+**Space Efficiency**: Bloom filters take significantly less space to hold information and are very efficient in checking existence.
+
+- Does not store actual keys
+- Just an array lookup operation
+- Extremely fast membership testing
+
+```mermaid
+graph LR
+    A[Traditional Set:<br/>1 GB] -->|Bloom Filter| B[Bit Array:<br/>10 MB]
+    
+    style A fill:#ffcdd2,stroke:#c62828
+    style B fill:#c8e6c9,stroke:#2e7d32
+```
+
+### The Trade-off: False Positive Rate
+
+```mermaid
+graph TD
+    A[More Keys Added] --> B[More Bits Set to 1]
+    B --> C[Higher Collision Probability]
+    C --> D[Increased False Positive Rate]
+    
+    D --> E[Says key is present<br/>but actually it's not]
+    
+    style D fill:#ffcdd2,stroke:#c62828
+    style E fill:#ffcdd2,stroke:#c62828
+```
+
+**False Positive Rate Formula**:
+```
+P = (1 - e^(-n * m))^k
+
+Where:
+- P = False positive probability
+- n = Number of elements
+- m = Size of bit array
+- k = Number of hash functions
+```
+
+### Managing Growth
+
+As the number of keys increases, you must:
+
+1. **Recreate the Bloom Filter** with a larger size
+2. **Repopulate all keys** into the new filter
+3. **Estimate max keys** and provision a large filter to start with
+
+```mermaid
+sequenceDiagram
+    participant BF as Bloom Filter
+    participant System
+    
+    Note over BF: Initial size: 1000 bits
+    System->>BF: Add 800 keys
+    BF->>System: FP Rate: 2%
+    
+    System->>BF: Add 200 more keys
+    BF->>System: FP Rate: 8% (Too high!)
+    
+    Note over System: Time to resize!
+    System->>BF: Create new filter (5000 bits)
+    System->>BF: Repopulate all 1000 keys
+    BF->>System: FP Rate: 1% (Better!)
+```
+
+### Practical Implementation
+
+**Good News**: You don't have to implement Bloom Filters from scratch.
+
+- Libraries available in every programming language
+- Redis has Bloom Filters as a core feature
+- Production-ready implementations exist
+
+```mermaid
+graph LR
+    A[Your Application] --> B[Redis]
+    B --> C[BF.ADD key item]
+    B --> D[BF.EXISTS key item]
+    
+    style B fill:#c8e6c9,stroke:#2e7d32
+```
+
+### When to Use Bloom Filters
+
+Use Bloom Filters when:
+
+1. **Insert-only operations** - You insert but never remove data
+2. **Need 100% certainty for NO** - A "definitely not present" answer is valuable
+3. **False positives are acceptable** - Can tolerate occasional "maybe present" when actually not
+
+```mermaid
+flowchart TD
+    A{Can you accept<br/>false positives?} -->|No| B[Use Traditional Set]
+    A -->|Yes| C{Do you remove<br/>elements?}
+    
+    C -->|Yes| D[Use Traditional Set<br/>or Counting Bloom Filter]
+    C -->|No| E{Need 100%<br/>certainty for NO?}
+    
+    E -->|Yes| F[Use Bloom Filter]
+    E -->|No| G[Consider alternatives]
+    
+    style F fill:#c8e6c9,stroke:#2e7d32
+    style B fill:#fff9c4,stroke:#f57f17
+    style D fill:#fff9c4,stroke:#f57f17
+```
+
+### Real-World Use Cases
+
+#### 1. Content Recommendation
+- Medium article recommendations
+- Instagram reel suggestions
+- Tinder feed generation
+- YouTube video recommendations
+
+```mermaid
+graph TD
+    A[User] --> B[Request: Show new content]
+    B --> C{Check Bloom Filter}
+    C -->|Definitely not seen| D[Show content]
+    C -->|Maybe seen| E[Skip to next item]
+    
+    style D fill:#c8e6c9,stroke:#2e7d32
+```
+
+#### 2. Web Crawler
+Avoid re-crawling already visited URLs.
+
+#### 3. Feed Generation
+Prevent duplicate items in social media feeds.
+
+#### 4. Duplicate Detection
+Quick first-pass check before expensive database lookup.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant BF as Bloom Filter
+    participant DB as Database
+    
+    Client->>BF: Check if item exists
+    alt Definitely NOT exists
+        BF->>Client: Not found (100% certain)
+        Client->>DB: Safe to insert
+    else Maybe exists
+        BF->>Client: Might exist
+        Client->>DB: Check database
+        alt Actually exists
+            DB->>Client: Duplicate found
+        else False positive
+            DB->>Client: Not found, insert
+        end
+    end
+```
+
+### Key Takeaways
+
+1. **Space Efficient** - Dramatically reduces memory requirements
+2. **Fast Lookups** - O(k) time complexity where k is number of hash functions
+3. **No False Negatives** - If it says NO, it's definitely NO
+4. **False Positives Possible** - If it says YES, it might be wrong
+5. **Insert Only** - Cannot remove elements (standard Bloom Filter)
+6. **Size Planning Critical** - Estimate maximum keys upfront
+
+---
+
+## 23. Consistent Hashing
+
+**Location:** `23-ConsistentHashing/ch.txt`
+
+### The Problem: Data Ownership
+
+Consistent Hashing is one of the most popular algorithms in distributed systems, solving a fundamental problem: **Data Ownership** - determining which node should own which piece of data.
+
+### Hash-Based Routing for Stateless Systems
+
+#### Basic Load Balancer Example
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant LB as Load Balancer
+    participant S0 as Server 0
+    participant S1 as Server 1
+    participant S2 as Server 2
+    
+    Client->>LB: Request with token
+    Note over LB: hash(token) % 3 = i
+    LB->>S1: Forward to Server i
+```
+
+**How it works**:
+```
+SHA-256("user1") = x
+server = x % 3 (number of servers) = i
+Route to Server i
+```
+
+**Key Points**:
+- SHA-256 or SHA-128 are popular hash functions
+- Hashing logic runs on the load balancer (not a separate service)
+- Requests are evenly distributed
+
+#### Handling Server Failures
+
+When a server goes down:
+
+```mermaid
+graph TD
+    A[3 Servers Active] --> B[Server 1 Fails]
+    B --> C[Routing function changes:<br/>hash % 2 instead of % 3]
+    C --> D[Requests redistributed<br/>across 2 servers]
+    
+    style B fill:#ffcdd2,stroke:#c62828
+    style D fill:#fff9c4,stroke:#f57f17
+```
+
+**This works because**: Load balancers and API servers are **STATELESS**
+
+- Every server is equally capable of handling any request
+- Doesn't matter if a request handled by Server 1 now goes to Server 0
+
+```mermaid
+flowchart LR
+    A[Request from User A] --> B[Previously: Server 1]
+    A --> C[Now: Server 0]
+    
+    B --> D[Same Result]
+    C --> D
+    
+    style D fill:#c8e6c9,stroke:#2e7d32
+```
+
+**Why Hash-Based Routing Works**: 
+- Most common for stateless backends
+- Example: Load Balancer + API servers
+
+### Hash-Based Ownership for Distributed Storage
+
+Now consider **stateful distributed storage** where data persistence matters:
+
+```mermaid
+graph TD
+    A[Client] --> B[Proxy/Router]
+    B --> C[Node 0]
+    B --> D[Node 1]
+    B --> E[Node 2]
+    
+    C --> F[Stores Data X]
+    D --> G[Stores Data Y]
+    E --> H[Stores Data Z]
+    
+    style B fill:#64b5f6,stroke:#1976d2
+    style C fill:#c8e6c9,stroke:#2e7d32
+    style D fill:#c8e6c9,stroke:#2e7d32
+    style E fill:#c8e6c9,stroke:#2e7d32
+```
+
+**Components**:
+- **Nodes**: Store the actual data
+- **Proxy**: Forwards requests to appropriate node
+- **Client**: End user/application
+
+**Key Question**: Which node owns which data?
+
+### The Consistent Hashing Ring
+
+```mermaid
+graph TD
+    A[Hash Space: 0 to 2^64-1] --> B[Form a Ring]
+    B --> C[Place Nodes on Ring<br/>based on hash]
+    C --> D[Place Keys on Ring<br/>based on hash]
+    D --> E[Key owned by next<br/>clockwise node]
+    
+    style E fill:#c8e6c9,stroke:#2e7d32
+```
+
+**Visualization**:
+
+```
+         [Slot 0]
+      Node 2 |  Node 0
+             |
+   [Slot 12] | [Slot 4]
+    ---------|-------
+             |
+      Node 1 |
+         [Slot 8]
+```
+
+**Ownership Rule**: A key is owned by the next node in the clockwise direction on the ring.
+
+```mermaid
+flowchart LR
+    A[Key K] --> B[Hash K to Slot 5]
+    B --> C[Find next clockwise node]
+    C --> D[Node 0 at Slot 4]
+    D --> E[Node 0 owns Key K]
+    
+    style E fill:#c8e6c9,stroke:#2e7d32
+```
+
+### Scaling Up: Adding Nodes
+
+**Scenario**: Add Node 3 that hashes to Slot 1
+
+```mermaid
+sequenceDiagram
+    participant Ring as Hash Ring
+    participant N0 as Node 0
+    participant N3 as Node 3 (New)
+    
+    Note over Ring: Keys between Slot 12 and Slot 1
+    Note over Ring: Previously owned by Node 0
+    
+    Ring->>N0: Identify affected keys
+    N0->>N3: Transfer keys (Slot 12 to Slot 1)
+    Note over N3: Node 3 now owns these keys
+    
+    Note over Ring: All other keys remain unchanged
+```
+
+**Benefits**:
+- Keys between Slot 12 and Slot 1 move from Node 0 to Node 3
+- All other keys remain at their respective nodes
+- **Minimal data movement** during scaling
+
+```mermaid
+graph LR
+    A[Before: Node 0 owns<br/>Slot 12 to Slot 4] --> B[After: Node 0 owns<br/>Slot 1 to Slot 4]
+    C[Node 3 owns<br/>Slot 12 to Slot 1]
+    
+    style B fill:#c8e6c9,stroke:#2e7d32
+    style C fill:#c8e6c9,stroke:#2e7d32
+```
+
+### Scaling Down: Removing Nodes
+
+**Scenario**: Remove Node 0
+
+```mermaid
+sequenceDiagram
+    participant N0 as Node 0
+    participant N2 as Node 2
+    participant Ring as Hash Ring
+    
+    Note over Ring: Node 0 owns Slot 12 to Slot 4
+    N0->>N2: Copy all keys to Node 2<br/>(next clockwise node)
+    Note over Ring: Update ring configuration
+    Ring->>Ring: Remove Node 0
+    Note over N2: Node 2 now owns<br/>Slot 8 to Slot 4
+```
+
+**Operational Steps**:
+1. Copy everything from Node 0 to Node 2 (next clockwise node)
+2. Remove Node 0 from the ring
+3. All keys previously owned by Node 0 are now owned by Node 2
+
+**Benefits**:
+- Only affected keys move
+- Other nodes remain unaffected
+- **Minimal data transfer**
+
+### Why Consistent Hashing is Powerful
+
+```mermaid
+flowchart TD
+    A[Traditional Hashing<br/>hash % N] --> B[Add/Remove Node]
+    B --> C[Rehash ALL keys<br/>N changes]
+    C --> D[Move most data]
+    
+    E[Consistent Hashing] --> F[Add/Remove Node]
+    F --> G[Only affected range<br/>rehashes]
+    G --> H[Minimal data movement]
+    
+    style D fill:#ffcdd2,stroke:#c62828
+    style H fill:#c8e6c9,stroke:#2e7d32
+```
+
+**Comparison**:
+
+| Aspect | Traditional Hash % N | Consistent Hashing |
+|--------|---------------------|-------------------|
+| **Adding Node** | Rehash all keys | Only keys in one range move |
+| **Removing Node** | Rehash all keys | Only keys from removed node move |
+| **Data Movement** | ~100% of data | ~1/N of data (N = nodes) |
+| **Disruption** | High | Low |
+| **Predictability** | Low | High |
+
+### Virtual Nodes for Better Distribution
+
+**Problem**: With few physical nodes, data might not be evenly distributed.
+
+**Solution**: Each physical node is represented by multiple virtual nodes on the ring.
+
+```mermaid
+graph TD
+    A[Physical Node 1] --> B[Virtual Node 1a at Slot 2]
+    A --> C[Virtual Node 1b at Slot 7]
+    A --> D[Virtual Node 1c at Slot 13]
+    
+    E[Physical Node 2] --> F[Virtual Node 2a at Slot 4]
+    E --> G[Virtual Node 2b at Slot 10]
+    E --> H[Virtual Node 2c at Slot 15]
+    
+    style A fill:#64b5f6,stroke:#1976d2
+    style E fill:#64b5f6,stroke:#1976d2
+```
+
+**Benefits**:
+- More uniform data distribution
+- Better load balancing
+- Smoother redistribution when nodes are added/removed
+
+### Real-World Applications
+
+#### 1. Distributed Caches
+- Redis Cluster
+- Memcached
+- Consistent key distribution across cache nodes
+
+#### 2. Distributed Databases
+- Apache Cassandra
+- Amazon DynamoDB
+- Determining which node stores which data
+
+#### 3. Content Delivery Networks (CDN)
+- Determining which edge server caches which content
+
+#### 4. Load Balancing
+- Session persistence
+- Sticky sessions without central coordination
+
+```mermaid
+graph TD
+    A[Use Case] --> B{Need Data<br/>Ownership?}
+    B -->|Yes| C{Stateful<br/>Storage?}
+    B -->|No| D[Simple Hash % N]
+    
+    C -->|Yes| E{Need to scale<br/>dynamically?}
+    C -->|No| D
+    
+    E -->|Yes| F[Use Consistent Hashing]
+    E -->|No| G[Consider simpler options]
+    
+    style F fill:#c8e6c9,stroke:#2e7d32
+```
+
+### Implementation Notes
+
+**Hashing Logic**:
+- Not a separate service
+- Simple code running on the proxy/load balancer
+- Lightweight and fast
+
+**Load Balancers are Stateless**:
+- Don't store data themselves
+- Just route based on hash calculation
+- Can be easily replicated
+
+### Key Takeaways
+
+1. **Solves Data Ownership** - Determines which node owns which data in distributed systems
+2. **Minimal Disruption** - Only ~1/N of data moves when scaling
+3. **Predictable** - Easy to determine data location
+4. **Scalable** - Handles dynamic addition/removal of nodes gracefully
+5. **Widely Used** - Powers many distributed systems (Cassandra, DynamoDB, Redis Cluster)
+6. **Virtual Nodes** - Improves distribution and load balancing
+
+---
+
+## 24. Big Data Processing
+
+**Location:** `24-BigData/bd.txt`
+
+### What is Big Data Processing?
+
+When one machine is not enough to process data, we divide and conquer - this essentially is Big Data Processing.
+
+```mermaid
+graph LR
+    A[Single Machine:<br/>Limited Processing] --> B[Big Data Problem]
+    B --> C[Multiple Machines:<br/>Distributed Processing]
+    
+    style A fill:#ffcdd2,stroke:#c62828
+    style C fill:#c8e6c9,stroke:#2e7d32
+```
+
+**Use Cases**:
+- Process massive amounts of data and extract insights
+- Train ML models on large datasets
+- Move data across databases
+- Real-time analytics
+- Data transformation pipelines
+
+**Key Benefit**: All fancy processing on commodity hardware
+
+### The Problem: Word Frequency Count
+
+**Task**: Given a 1 TB dataset, find the frequency of each word.
+
+#### Approach 1: Simple Single Machine
+
+```mermaid
+flowchart TD
+    A[Load 1 TB data on disk] --> B[Read character by character]
+    B --> C[When space encountered]
+    C --> D[Update in-memory hash table<br/>word_freq[word] += 1]
+    D --> E[Continue until end]
+    
+    F[Time Complexity: O n] --> G[But single machine = SLOW]
+    
+    style G fill:#ffcdd2,stroke:#c62828
+```
+
+**Algorithm**:
+1. Load data on one machine (disk)
+2. Read it character by character
+3. When space is encountered, update in-memory hash table
+4. `word_freq[word] += 1`
+
+**Issue**: Simple O(n) approach, but only one machine doing all the work = very slow
+
+#### Approach 2: Multi-Threading
+
+```mermaid
+graph TD
+    A[1 TB File] --> B[Split into Chunks]
+    B --> C[Thread 1: Process Chunk 1]
+    B --> D[Thread 2: Process Chunk 2]
+    B --> E[Thread 3: Process Chunk 3]
+    B --> F[Thread N: Process Chunk N]
+    
+    C --> G[Merge Results]
+    D --> G
+    E --> G
+    F --> G
+    
+    style G fill:#c8e6c9,stroke:#2e7d32
+```
+
+**Improvement**: Parallelize with threads - each thread handles a chunk and updates `word_freq[word] += 1`
+
+**But what if the dataset is 100 TB?**
+
+#### Limitations of Single Machine Approaches
+
+```mermaid
+flowchart TD
+    A[100 TB Dataset] --> B{Can it fit on<br/>one machine?}
+    B -->|No| C[Storage Problem]
+    B -->|Maybe| D{Can compute<br/>fast enough?}
+    
+    D -->|No| E[Performance Problem]
+    D -->|Limited| F[Thread Limitations]
+    
+    C --> G[Need Distributed Solution]
+    E --> G
+    F --> G
+    
+    style G fill:#fff9c4,stroke:#f57f17
+```
+
+**Constraints**:
+- Threads are bounded by CPU cores
+- Limited computational capabilities of hardware
+- Storage limitations
+- Even if it fits, it's slow to compute
+
+### Approach 3: Distributed Computing
+
+**Core Idea**: Instead of one powerful machine, use multiple smaller machines to leverage parallelism.
+
+```mermaid
+graph TD
+    A[User] --> B[Coordinator]
+    B --> C[Worker 1: Process Partition 1]
+    B --> D[Worker 2: Process Partition 2]
+    B --> E[Worker 3: Process Partition 3]
+    B --> F[Worker N: Process Partition N]
+    
+    C --> G[Send word_freq to Coordinator]
+    D --> G
+    E --> G
+    F --> G
+    
+    G --> H[Merge Results]
+    H --> I[Return to User]
+    
+    style B fill:#64b5f6,stroke:#1976d2
+    style H fill:#c8e6c9,stroke:#2e7d32
+```
+
+**Benefits**:
+- More computers = More CPUs = More processing power
+- Can handle datasets larger than any single machine
+- Scales horizontally
+
+#### Distributed Word Count Algorithm
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Coord as Coordinator
+    participant W1 as Worker 1
+    participant W2 as Worker 2
+    participant W3 as Worker 3
+    
+    User->>Coord: Submit job with 1 TB file
+    Coord->>Coord: Split file into partitions
+    
+    Coord->>W1: Process Partition 1
+    Coord->>W2: Process Partition 2
+    Coord->>W3: Process Partition 3
+    
+    W1->>W1: Count word frequencies
+    W2->>W2: Count word frequencies
+    W3->>W3: Count word frequencies
+    
+    W1->>Coord: Return freq_map_1
+    W2->>Coord: Return freq_map_2
+    W3->>Coord: Return freq_map_3
+    
+    Coord->>Coord: Merge all frequency maps
+    Coord->>User: Return final result
+```
+
+**Steps**:
+1. Split file into partitions
+2. Distribute partitions across all workers
+3. Each worker computes word frequency independently
+4. Workers send results to coordinator
+5. Coordinator merges and returns result to user
+
+### Challenges in Distributed Processing
+
+```mermaid
+flowchart TD
+    A[Distributed System Challenges] --> B[Failures]
+    A --> C[Recovery]
+    A --> D[Completion Tracking]
+    A --> E[Scaling & Distribution]
+    A --> F[Resource Management]
+    
+    B --> G[What if worker crashes?]
+    C --> H[How to recover work?]
+    D --> I[How to know when done?]
+    E --> J[How to distribute load?]
+    F --> K[How to clean up resources?]
+    
+    style A fill:#ffcdd2,stroke:#c62828
+```
+
+**Key Questions**:
+1. What about failures?
+2. What about recovery?
+3. What about completion tracking?
+4. What about scaling and distribution?
+5. How to manage resources?
+
+### Big Data Tools to the Rescue
+
+**The Reality**: Although we can build distributed systems ourselves, if tools exist to manage complexity for us, adopt them.
+
+```mermaid
+graph TD
+    A[Big Data Tools] --> B[Apache Spark]
+    A --> C[Apache Flink]
+    A --> D[Hadoop MapReduce]
+    A --> E[Apache Beam]
+    
+    B --> F[Handles Complexity]
+    C --> F
+    D --> F
+    E --> F
+    
+    F --> G[You write business logic]
+    F --> H[Tool handles infrastructure]
+    
+    style G fill:#c8e6c9,stroke:#2e7d32
+    style H fill:#c8e6c9,stroke:#2e7d32
+```
+
+**What Big Data Tools Manage**:
+- Distribute work across machines
+- Track which machines are doing what
+- Retry in case of failures
+- Reprocess in case of crashes or corruption
+- Clean up resources once job is complete
+- Handle data partitioning
+- Manage worker coordination
+
+**Your Responsibility**: Write the business logic
+
+```mermaid
+flowchart LR
+    A[You Write] --> B[map function<br/>reduce function<br/>Business Logic]
+    
+    C[Tool Handles] --> D[Distribution<br/>Failures<br/>Scaling<br/>Recovery]
+    
+    B --> E[Complete Solution]
+    D --> E
+    
+    style B fill:#e1f5ff,stroke:#01579b
+    style D fill:#c8e6c9,stroke:#2e7d32
+    style E fill:#fff9c4,stroke:#f57f17
+```
+
+### Popular Big Data Tools
+
+#### Apache Spark
+
+```mermaid
+graph TD
+    A[Apache Spark] --> B[Batch Processing]
+    A --> C[Stream Processing]
+    A --> D[Machine Learning]
+    A --> E[Graph Processing]
+    
+    B --> F[Large scale data processing]
+    C --> G[Real-time analytics]
+    D --> H[MLlib for ML pipelines]
+    E --> I[GraphX for graph computation]
+    
+    style A fill:#e65100,stroke:#bf360c
+```
+
+**Features**:
+- In-memory processing (fast)
+- Runs on commodity hardware
+- Connectors to many databases and infrastructure components
+- Rich API (Python, Scala, Java, R)
+
+#### Apache Flink
+
+```mermaid
+graph TD
+    A[Apache Flink] --> B[True Stream Processing]
+    A --> C[Event Time Processing]
+    A --> D[Stateful Computations]
+    
+    B --> E[Low latency real-time]
+    C --> F[Handle out-of-order events]
+    D --> G[Maintain state across events]
+    
+    style A fill:#e91e63,stroke:#880e4f
+```
+
+**Specialty**: Real-time stream processing with exactly-once guarantees
+
+### Real-World Use Cases
+
+#### Use Case 1: Data Consolidation
+
+```mermaid
+flowchart LR
+    A[User DB] --> E[Spark Job]
+    B[Order DB] --> E
+    C[Payment DB] --> E
+    D[Logistics DB] --> E
+    
+    E --> F[Process & Join]
+    F --> G[AWS Redshift<br/>Analytics DB]
+    
+    style E fill:#e65100,stroke:#bf360c
+    style G fill:#c8e6c9,stroke:#2e7d32
+```
+
+**Example**: Combine user, order, payments, and logistics databases and put the result in AWS Redshift for analytics.
+
+#### Use Case 2: Real-time Event Processing
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant K as Kafka
+    participant F as Flink
+    participant DB as Analytics DB
+    
+    App->>K: Stream activity events
+    K->>F: Consume events
+    F->>F: Enrich events in real-time
+    F->>DB: Write enriched data
+    
+    Note over DB: Real-time tracking<br/>and analytics
+```
+
+**Example**: When any activity happens, events are streamed to Kafka. In real-time, enrich the events and put them in analytics DB to track in real-time.
+
+#### Use Case 3: Machine Learning Pipelines
+
+```mermaid
+flowchart TD
+    A[Raw Data<br/>Petabytes] --> B[Spark Preprocessing]
+    B --> C[Feature Engineering]
+    C --> D[Model Training<br/>Distributed]
+    D --> E[Model Evaluation]
+    E --> F{Good Model?}
+    F -->|No| C
+    F -->|Yes| G[Deploy Model]
+    
+    style D fill:#e65100,stroke:#bf360c
+    style G fill:#c8e6c9,stroke:#2e7d32
+```
+
+**Example**: Train ML models on datasets too large for a single machine.
+
+### The Big Data Ecosystem
+
+```mermaid
+graph TD
+    A[Big Data Ecosystem] --> B[Storage]
+    A --> C[Processing]
+    A --> D[Streaming]
+    A --> E[Orchestration]
+    
+    B --> B1[HDFS, S3, Azure Blob]
+    C --> C1[Spark, Hadoop, Presto]
+    D --> D1[Kafka, Flink, Kinesis]
+    E --> E1[Airflow, Oozie]
+    
+    style A fill:#64b5f6,stroke:#1976d2
+```
+
+**Storage Layer**:
+- HDFS (Hadoop Distributed File System)
+- Amazon S3
+- Azure Blob Storage
+
+**Processing Layer**:
+- Apache Spark
+- Apache Hadoop
+- Presto/Trino
+
+**Streaming Layer**:
+- Apache Kafka
+- Apache Flink
+- AWS Kinesis
+
+**Orchestration Layer**:
+- Apache Airflow
+- Apache Oozie
+
+### MapReduce Pattern
+
+The fundamental pattern in distributed big data processing:
+
+```mermaid
+flowchart TD
+    A[Input Data] --> B[MAP Phase]
+    B --> C[Split & Transform<br/>in parallel]
+    
+    C --> D[SHUFFLE Phase]
+    D --> E[Group by Key]
+    
+    E --> F[REDUCE Phase]
+    F --> G[Aggregate results<br/>in parallel]
+    
+    G --> H[Final Output]
+    
+    style B fill:#e1f5ff,stroke:#01579b
+    style F fill:#c8e6c9,stroke:#2e7d32
+```
+
+**For Word Count**:
+- **Map**: Each worker outputs (word, 1) pairs
+- **Shuffle**: Group all pairs by word
+- **Reduce**: Sum up counts for each word
+
+### Key Takeaways
+
+1. **Divide and Conquer** - Break large problems into smaller parallel tasks
+2. **Horizontal Scaling** - Add more machines instead of bigger machines
+3. **Use Existing Tools** - Don't build from scratch (Spark, Flink)
+4. **Commodity Hardware** - Runs on regular servers, not specialized hardware
+5. **Rich Ecosystem** - Tools for storage, processing, streaming, orchestration
+6. **Focus on Logic** - You write business logic, tools handle infrastructure
+7. **Fault Tolerance** - Tools handle failures and recovery automatically
 
 ---
