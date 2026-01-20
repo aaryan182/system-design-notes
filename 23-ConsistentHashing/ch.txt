@@ -1,0 +1,46 @@
+One of the most amazing and popular algorithm out there and the only problem it solves is Data ownership.
+
+We first understand consistent Hashsing and then practical implementation.
+
+Hash Based Ownership 
+Say we have a load balancer and when a request comes in it uses hash of access token to decide which backend server to forward it to . 
+
+SHA-256 or SHA-128 are popular choices. 
+
+SHA-256("user1") = x
+server = x % 3(no of servers) = i
+
+Note: Hashing logic is NOT a 'service' but just a simple code running on the load balancer.
+
+If one of the servers is taken down then the routing function changes and now the request will be evenly distributed between remaining two servers. 
+
+
+Load balancers are STATELESS
+because the API server are stateless which means every server is equally capable of handling the request it does not matter if request that was handled by server1 now starts going to server 0.
+
+
+
+
+This is precisely why we see "Hash Based Routing" as one of the most common ways of routing for stateless backend.
+eg Load balancer + API servers 
+
+
+
+Hash Based 'routing' (ownership) for distributed storage 
+Instead of stateless API request say we are having a stateful distributed storage : nodes store the data, proxy forwards the request to a node, end user/client talks to proxy 
+Picking which node 'owns' the data depends on the Hash Based ownership.
+
+
+How the ownership is determined? 
+consistent hashing ring will only tell us the node that 'should' own it .
+
+
+Scaling up => when we add a new node to the ring say node 3 hashes to slot 1 
+
+the key s that hashed between slot 12 and slot 1 will now be 'owned' by node 3 instead of node 0. other keys continue to remain at the respective nodes ( minimal data movement )
+
+
+
+Scaling down => say we scale down and remove node 0 . All the keys that were owned by node 0 will now be owned by node 2 ( next in the ring). Minimal data transfer 
+operationally 1) copy everything from node 0 to node 2 
+2) remove node 2 from the ring
