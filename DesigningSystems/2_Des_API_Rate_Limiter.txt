@@ -1,0 +1,84 @@
+Motive: Understanding that more boxes is not equal to better system. Understanding tradeoffs making scaling decisions.
+
+Designing API Rate Limiter
+
+Systems break down under tremendous load and we need to ensure that doesn't happen. 
+Design a rate limiter that : 
+- limits the number of requests in a given period 
+- allows developers to configure threshold at a granular level.
+- does not add a massive additional overhead
+
+
+Rate Limiter: 
+- first line of defence 
+- any incoming request is first consulted against rate limiter 
+- if we are under limits go through
+- otherwise reject with error (429)
+
+Where does it fit? 
+User ->  Frontend Proxy -> Rate Limiter -> Backend Server
+                        <- Rate Limiter
+
+User -> Load Balancer -> Service -> Rate Limiter -> Backend Server
+                        (Middleware) <- Rate Limiter
+
+
+Request does not even hit the service 
+
+
+Dissecting Rate Limiter: 
+Rate Limiter needs to trach # request in a given period 
+Hence we need a database to hold the count but which one ?
+
+1. for every incoming request we would update the Database 
+2. for every incoming request we would read from the database(aggregate)
+3. we need ability to "clock" the time 
+
+Say we rate limit per user 
+
+1. we store # request in current period 
+2. once the period is over we reset the counter 
+
+Resetting the counter is similar to expiring the key  
+-> KV store + Expiration -> Redis 
+Also gives us fast in memory writes + periodic persistence
+
+
+Checking and Updating :
+1. we expose service(HTTP Endpoint ) that talks to rate limiter database 
+2. we let the services directly talk to rate limiter database 
+    - saves one network hop
+    - but exposes critical internal details
+
+
+We can make Rate Limiter having its own Load Balancer and bunch of API servers 
+But this adds substantial network hops  
+
+To reduce the overhead of checking the rate limiter we let proxy/service direclty manipulate the rate limiter database (saving 2 hops)
+
+Rate limiter added as a library holding all the business logic 
+
+
+Scaling the rate limiter: 
+
+Given the services are directly talking to the rate limiter database 
+scaling rate limiter = scaling the database 
+1. should we scale vertically ? Yes 
+2. should we add read replicas? No Traffic is not read heavy
+3. should we shard the database ? Yes 
+
+-> any function in backend service 
+- will extract user_id from token 
+
+
+
+We can shard the redis database to handle more load.
+
+Admin Console : It is better to have a small Admin Console (Frontend/Backend) that is used by the developers to reset counters and debug when things go wrong. 
+
+The service will also provide observability on infra and rate limiting DB like #keys, # request blocked, CPU/mem load etc 
+
+Admin would be very low throughput service . 
+
+
+Read Leaky bucket and Fixed Window and sliding window algorithm using Redis.
