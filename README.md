@@ -4770,7 +4770,213 @@ Each topic builds upon previous concepts to provide a complete understanding of 
 +-- 19-leaderElection/            # Leader election for auto-recovery
 +-- 20-ClientServerModel/         # Client-server communication
 +-- 21-blobstorage/               # Blob storage and S3
++-- 22-bloomFilter/               # Bloom filter data structure
++-- 23-ConsistentHashing/         # Consistent hashing technique
++-- 24-BigData/                   # Big data processing
++-- DesigningSystems/             # Real-world system design examples
 ```
+
+---
+
+## Designing Systems
+
+Real-world system design examples demonstrating how to apply fundamental concepts to build maintainable, scalable, and fault-tolerant systems.
+
+### Design Example 1: E-commerce Product Listing
+
+**Motive**: Understanding how a system is built and taking a structured approach to building one that is easily maintainable, scalable, and fault tolerant.
+
+#### Requirements
+
+For a small shop (100 items), design a system where:
+- Shop owner can add a new product
+- Shop owner can update/delete existing products
+- List all products on the website
+- Customers should be able to quickly access the catalog
+
+#### Storage Design
+
+**Database Selection:**
+- Not huge data, only 100 items (fits on single node)
+- Structured data - SQL database is appropriate
+- Products table to hold all the catalog
+
+#### Serving the Data
+
+**API Layer:**
+- Simple REST-based HTTP webserver
+- Multiple instances to handle concurrent requests
+- Load balancer in front for distribution
+- DNS: `api.mystore.com`
+
+#### Architecture Evolution
+
+**Basic Architecture:**
+```
+Users -> Load Balancer -> API Servers -> Database
+```
+
+**Complete Architecture:**
+```
+User -> Catalog Frontend Service -> Catalog Backend Service -> Catalog Database
+```
+
+**Admin Interface:**
+
+Shop owner needs admin console to manage the catalog:
+```
+User -> Frontend -> Backend -> Catalog Database
+                   Admin UI -> Backend -> Catalog Database
+                   (Shop Owner)
+```
+
+#### Scaling the Database
+
+**Understanding the Load:**
+- Primary load comes from users listing/browsing products
+- Load is READ-heavy
+- Solution: Add READ replicas
+
+**Scaled Architecture:**
+```
+User -> Frontend -> Backend --(write)--> Catalog DB (Master)
+                           --(read)---> Catalog DB (Replica)
+                           
+Admin UI -> Backend -> Catalog Database (Master)
+(Shop Owner)
+```
+
+#### Key Design Decisions
+
+1. **SQL Database**: Structured data with clear schema
+2. **Read Replicas**: Handle read-heavy traffic patterns
+3. **Separate Admin UI**: Isolate admin operations from customer traffic
+4. **Load Balancer**: Distribute traffic across multiple API servers
+
+---
+
+### Design Example 2: API Rate Limiter
+
+**Motive**: Understanding that more boxes is not equal to a better system. Understanding tradeoffs in making scaling decisions.
+
+#### The Problem
+
+Systems break down under tremendous load and we need to ensure that doesn't happen.
+
+#### Requirements
+
+Design a rate limiter that:
+- Limits the number of requests in a given period
+- Allows developers to configure thresholds at a granular level
+- Does not add massive additional overhead
+
+#### Rate Limiter Fundamentals
+
+**Function:**
+- First line of defense
+- Any incoming request is first consulted against rate limiter
+- If under limits: allow through
+- Otherwise: reject with error (429 Too Many Requests)
+
+#### Architecture Placement
+
+**Option 1: Frontend Proxy:**
+```
+User -> Frontend Proxy -> Rate Limiter -> Backend Server
+                       <- Rate Limiter
+```
+
+**Option 2: Middleware:**
+```
+User -> Load Balancer -> Service -> Rate Limiter -> Backend Server
+                       (Middleware) <- Rate Limiter
+```
+
+Request doesn't even hit the service if rate limited.
+
+#### Dissecting the Rate Limiter
+
+**Key Requirements:**
+1. Track number of requests in a given period
+2. Update database for every incoming request
+3. Read from database for every incoming request (aggregate)
+4. Ability to "clock" the time
+
+**Rate Limiting per User:**
+1. Store number of requests in current period
+2. Once period is over, reset the counter
+3. Resetting counter = expiring the key
+
+**Database Selection:**
+- Need: KV store + Expiration capability
+- Solution: **Redis**
+- Benefits: Fast in-memory writes + periodic persistence
+
+#### Implementation Approaches
+
+**Checking and Updating:**
+
+1. **Expose HTTP Endpoint:**
+   - Service talks to rate limiter service
+   - Service has API servers with load balancer
+   - Adds substantial network hops
+
+2. **Direct Database Access (Chosen):**
+   - Services directly talk to rate limiter database
+   - Saves one network hop
+   - Exposes critical internal details (acceptable tradeoff)
+
+**Rate Limiter as Library:**
+- Add rate limiter as a library holding all business logic
+- Reduces overhead of checking rate limiter
+- Proxy/service directly manipulates rate limiter database
+- Saves 2 network hops
+
+#### Scaling the Rate Limiter
+
+Given services directly talk to the rate limiter database:
+
+**Scaling Rate Limiter = Scaling the Database**
+
+1. **Should we scale vertically?** YES
+2. **Should we add read replicas?** NO - Traffic is not read-heavy
+3. **Should we shard the database?** YES
+
+**Sharding Strategy:**
+- Extract `user_id` from token in backend service
+- Shard Redis database by `user_id`
+- Distributes load across multiple Redis instances
+
+#### Admin Console
+
+**Purpose:**
+- Small Admin Console (Frontend/Backend)
+- Used by developers to reset counters
+- Debug when things go wrong
+
+**Observability:**
+- Number of keys
+- Number of requests blocked
+- CPU/memory load
+- Admin is very low throughput service
+
+#### Algorithms to Explore
+
+Read about:
+- **Leaky Bucket algorithm**
+- **Fixed Window algorithm**
+- **Sliding Window algorithm**
+
+All can be implemented using Redis.
+
+#### Key Design Decisions
+
+1. **Redis for Storage**: In-memory KV store with TTL support
+2. **Library Approach**: Minimize network overhead
+3. **Vertical Scaling First**: Simple and effective
+4. **Sharding for Scale**: Distribute load across multiple Redis instances
+5. **Direct Database Access**: Trade internal exposure for performance
+6. **Separate Admin Console**: Low-throughput management interface
 
 ---
 
@@ -6324,5 +6530,388 @@ flowchart TD
 5. **Rich Ecosystem** - Tools for storage, processing, streaming, orchestration
 6. **Focus on Logic** - You write business logic, tools handle infrastructure
 7. **Fault Tolerance** - Tools handle failures and recovery automatically
+
+---
+
+## 25. Designing Systems: E-commerce Product Listing
+
+**Motive**: Understanding how a system is built and taking a structured approach to building one that is easily maintainable, scalable, and fault tolerant.
+
+### Problem Statement
+
+Design a system for a small shop (100 items) where the shop owner can:
+- Add a new product
+- Update/delete existing product
+- List all the products on the website
+- Customers should be able to quickly access the catalog
+
+### Architecture Evolution
+
+#### Phase 1: Basic Architecture
+
+```mermaid
+flowchart LR
+    A[Users] --> B[Load Balancer<br/>api.mystore.com]
+    B --> C[API Servers]
+    C --> D[(Catalog Database<br/>SQL)]
+    
+    style A fill:#e1f5ff
+    style B fill:#fff9c4
+    style C fill:#c8e6c9
+    style D fill:#f8bbd0
+```
+
+**Key Decisions**:
+- **Storage**: Not huge data, only 100 items (fits on single node)
+- **Database Choice**: Structured data, use SQL DB with products table
+- **Serving**: REST-based HTTP webserver
+- **Scalability**: Multiple API servers behind a load balancer
+
+#### Phase 2: Frontend and Admin Separation
+
+```mermaid
+flowchart TD
+    A[End Users] --> B[Catalog Frontend<br/>Service]
+    C[Shop Owner] --> D[Admin UI<br/>Service]
+    
+    B --> E[Catalog Backend<br/>Service]
+    D --> E
+    
+    E --> F[(Catalog Database)]
+    
+    style A fill:#e1f5ff
+    style C fill:#ffe0b2
+    style B fill:#c8e6c9
+    style D fill:#ffccbc
+    style E fill:#b2dfdb
+    style F fill:#f8bbd0
+```
+
+**Separation of Concerns**:
+- **Catalog Frontend**: Customer-facing interface for browsing products
+- **Admin UI**: Separate interface for shop owner to manage catalog
+- **Backend Service**: Shared service handling business logic for both interfaces
+- **Database**: Single source of truth for catalog data
+
+#### Phase 3: Scaling for Read-Heavy Load
+
+```mermaid
+flowchart TD
+    A[Users] --> B[Frontend Service]
+    C[Shop Owner] --> D[Admin UI]
+    
+    B --> E[Backend Service]
+    D --> E
+    
+    E -->|Write| F[(Catalog DB<br/>Master)]
+    E -->|Read| G[(Catalog DB<br/>Replica 1)]
+    E -->|Read| H[(Catalog DB<br/>Replica 2)]
+    
+    F -.->|Replication| G
+    F -.->|Replication| H
+    
+    style A fill:#e1f5ff
+    style C fill:#ffe0b2
+    style E fill:#b2dfdb
+    style F fill:#f44336,color:#fff
+    style G fill:#c8e6c9
+    style H fill:#c8e6c9
+```
+
+**Scaling Decisions**:
+- **Load Analysis**: Product listing is READ-heavy (customers browsing)
+- **Solution**: Add READ replicas to handle heavy read load
+- **Write Operations**: All writes go to master (shop owner updates)
+- **Read Operations**: Distribute across replicas (customer browsing)
+
+### Component Load Analysis
+
+| Component | Load Type | Traffic Source | Scaling Strategy |
+|-----------|-----------|----------------|------------------|
+| Frontend | Medium | End users | Horizontal scaling |
+| Admin UI | Low | Shop owner only | Single instance sufficient |
+| Backend Service | High | Both interfaces | Horizontal scaling |
+| Master DB | Low | Writes only | Vertical scaling if needed |
+| Replica DBs | High | Read queries | Add more replicas |
+
+### Key Takeaways
+
+1. **Start Simple**: Begin with basic architecture, scale as needed
+2. **Understand Load Patterns**: READ vs WRITE load determines scaling strategy
+3. **Separation of Concerns**: Keep customer and admin interfaces separate
+4. **Database Replication**: Use read replicas for read-heavy workloads
+5. **DNS and Load Balancing**: Essential for multi-server deployments
+6. **Shared Backend**: Single backend service can serve multiple frontends
+
+---
+
+## 26. Designing Systems: API Rate Limiter
+
+**Motive**: Understanding that more boxes is not equal to better system. Understanding tradeoffs in making scaling decisions.
+
+### Problem Statement
+
+Systems break down under tremendous load and we need to ensure that doesn't happen. Design a rate limiter that:
+- Limits the number of requests in a given period
+- Allows developers to configure threshold at a granular level
+- Does not add a massive additional overhead
+
+### Rate Limiter Fundamentals
+
+**Purpose**:
+- **First line of defense** against traffic overload
+- Any incoming request is first consulted against rate limiter
+- If under limits: request goes through
+- Otherwise: reject with error (429 Too Many Requests)
+
+### Architecture Options
+
+#### Option 1: Frontend Proxy Approach
+
+```mermaid
+flowchart LR
+    A[User] --> B[Frontend Proxy]
+    B --> C[Rate Limiter]
+    C -->|Allowed| D[Backend Server]
+    C -->|Rejected 429| B
+    
+    style A fill:#e1f5ff
+    style B fill:#fff9c4
+    style C fill:#ffccbc
+    style D fill:#c8e6c9
+```
+
+**Characteristics**: Request intercepted before hitting the service.
+
+#### Option 2: Middleware Approach
+
+```mermaid
+flowchart LR
+    A[User] --> B[Load Balancer]
+    B --> C[Service with<br/>Rate Limiter Middleware]
+    C -->|Allowed| D[Backend Server]
+    C -->|Rejected 429| B
+    
+    style A fill:#e1f5ff
+    style B fill:#fff9c4
+    style C fill:#ffccbc
+    style D fill:#c8e6c9
+```
+
+**Characteristics**: Rate limiter integrated as middleware in the service.
+
+### Rate Limiter Architecture
+
+#### Full System Design
+
+```mermaid
+flowchart TD
+    A[User Request] --> B[Load Balancer/<br/>Proxy]
+    
+    B --> C[Rate Limiter<br/>Library]
+    
+    C -->|Check & Update| D[(Redis Cluster<br/>Sharded)]
+    
+    D -->|Under Limit| E[Backend Service]
+    D -->|Over Limit| F[Return 429 Error]
+    
+    G[Admin Console] --> H[Admin Backend]
+    H --> D
+    H --> I[Observability<br/>Metrics]
+    
+    style A fill:#e1f5ff
+    style C fill:#ffccbc
+    style D fill:#f44336,color:#fff
+    style E fill:#c8e6c9
+    style F fill:#ff5252,color:#fff
+    style G fill:#ffe0b2
+```
+
+### Database Selection: Why Redis?
+
+**Requirements Analysis**:
+1. For every incoming request: UPDATE the database
+2. For every incoming request: READ from the database (aggregate)
+3. Need ability to "clock" the time and expire data
+
+**Solution**: KV Store + Expiration = **Redis**
+
+**Redis Benefits**:
+- Fast in-memory writes
+- Periodic persistence
+- Built-in key expiration (automatic counter reset)
+- High throughput for read/write operations
+
+### Rate Limiting Logic
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Service
+    participant RateLimiter
+    participant Redis
+    
+    User->>Service: Request
+    Service->>RateLimiter: Check rate limit
+    RateLimiter->>Redis: GET user_id count
+    
+    alt Under limit
+        RateLimiter->>Redis: INCR user_id
+        Redis-->>RateLimiter: New count
+        RateLimiter-->>Service: Allow
+        Service-->>User: 200 OK
+    else Over limit
+        RateLimiter-->>Service: Reject
+        Service-->>User: 429 Too Many Requests
+    end
+```
+
+**Per-User Tracking**:
+- Store number of requests in current period
+- Once the period is over, reset the counter
+- Resetting the counter = expiring the key (Redis TTL)
+
+### Optimization: Reducing Network Overhead
+
+#### Approach 1: Service-Based Rate Limiter (High Overhead)
+
+```mermaid
+flowchart LR
+    A[Proxy/Service] -->|1. Check Rate| B[Rate Limiter<br/>Load Balancer]
+    B --> C[Rate Limiter<br/>API Server]
+    C -->|2. Query| D[(Redis)]
+    D -->|3. Response| C
+    C -->|4. Decision| B
+    B -->|5. Continue| E[Backend]
+    
+    style D fill:#f44336,color:#fff
+```
+
+**Problem**: Adds substantial network hops (2 extra hops per request).
+
+#### Approach 2: Library-Based Rate Limiter (Optimized)
+
+```mermaid
+flowchart LR
+    A[Proxy/Service with<br/>Rate Limiter Library] -->|1. Direct Query| B[(Redis)]
+    B -->|2. Response| A
+    A -->|3. Continue| C[Backend]
+    
+    style B fill:#f44336,color:#fff
+    style A fill:#c8e6c9
+```
+
+**Solution**: Rate limiter as a library holding all business logic.
+
+**Benefits**:
+- Saves 2 network hops
+- Services directly manipulate the rate limiter database
+- Significantly reduced latency overhead
+
+### Scaling the Rate Limiter
+
+```mermaid
+flowchart TD
+    A[Multiple Services] -->|Consistent Hashing<br/>by user_id| B[(Redis Shard 1)]
+    A -->|Consistent Hashing<br/>by user_id| C[(Redis Shard 2)]
+    A -->|Consistent Hashing<br/>by user_id| D[(Redis Shard 3)]
+    
+    E[Admin Console] --> F[Admin Backend]
+    F --> B
+    F --> C
+    F --> D
+    
+    style B fill:#f44336,color:#fff
+    style C fill:#f44336,color:#fff
+    style D fill:#f44336,color:#fff
+    style E fill:#ffe0b2
+```
+
+**Scaling Decisions**:
+
+| Strategy | Should We Use? | Reason |
+|----------|----------------|--------|
+| Vertical Scaling | Yes | First step, cost-effective |
+| Read Replicas | No | Traffic is not read-heavy |
+| Sharding | Yes | Distributes write load across multiple Redis instances |
+
+**Sharding Strategy**:
+- Extract `user_id` from token
+- Hash `user_id` to determine shard
+- Each shard handles subset of users
+- Horizontal scalability for writes
+
+### Admin Console
+
+```mermaid
+flowchart TD
+    A[Developer] --> B[Admin Console<br/>Frontend]
+    B --> C[Admin Backend<br/>Service]
+    
+    C --> D[Reset Counters]
+    C --> E[Debug Interface]
+    C --> F[Observability<br/>Metrics]
+    
+    F --> G[Keys Count]
+    F --> H[Requests Blocked]
+    F --> I[CPU/Memory Load]
+    
+    style A fill:#ffe0b2
+    style B fill:#fff9c4
+    style C fill:#b2dfdb
+    style F fill:#e1f5ff
+```
+
+**Purpose**:
+- Small admin console (Frontend/Backend)
+- Used by developers to reset counters and debug
+- Provides observability on infrastructure
+- Very low throughput service
+
+**Metrics Provided**:
+- Number of keys in Redis
+- Number of requests blocked
+- CPU/Memory load on Redis instances
+- Per-user rate limit status
+
+### Rate Limiting Algorithms
+
+```mermaid
+graph TD
+    A[Rate Limiting<br/>Algorithms] --> B[Fixed Window]
+    A --> C[Sliding Window]
+    A --> D[Leaky Bucket]
+    A --> E[Token Bucket]
+    
+    B --> B1[Simple counter<br/>per time window]
+    C --> C1[Weighted count<br/>across windows]
+    D --> D1[Queue with<br/>fixed drain rate]
+    E --> E1[Tokens regenerate<br/>at fixed rate]
+    
+    style A fill:#64b5f6,stroke:#1976d2
+```
+
+**Recommended Reading**: Study Leaky Bucket, Fixed Window, and Sliding Window algorithms using Redis.
+
+### Key Takeaways
+
+1. **Strategic Placement**: Rate limiter should be first line of defense
+2. **Database Choice**: Redis ideal for fast reads/writes with expiration
+3. **Minimize Overhead**: Use library approach to reduce network hops
+4. **Smart Scaling**: Not all components need equal scaling
+5. **Sharding Strategy**: Shard by user_id for distributed write load
+6. **No Read Replicas**: Rate limiting is write-heavy, replicas don't help
+7. **Observability**: Admin console crucial for debugging and monitoring
+8. **Algorithm Selection**: Choose algorithm based on use case requirements
+
+### Trade-off Analysis
+
+| Aspect | Service Approach | Library Approach |
+|--------|-----------------|------------------|
+| Network Hops | 4-5 hops | 2-3 hops |
+| Latency | Higher | Lower |
+| Maintainability | Centralized updates | Requires library updates |
+| Security | Better isolation | Exposes Redis details |
+| Recommended | For strict isolation | For performance-critical systems |
 
 ---
