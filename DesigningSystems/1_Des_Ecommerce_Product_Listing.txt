@@ -1,0 +1,58 @@
+Motive: Understanding how a system is built and taking a structured approach is building one that is easily maintainable, scalable and fault tolerant.
+
+
+Designing e-commerce product listing
+
+For a small shop(100 items) designing a system through which the shop owner can:
+
+- add a new product 
+- update/delete existing product 
+- list all the products on the website 
+- customers should be able to quickly access the catalog 
+
+
+Storage: 
+- not huge data, only 100 items (fits on single node)
+- there seemes to be a structure we can go ahead with SQL DB
+- products table to hold all the catalog 
+
+Serving the data: 
+- simple REST based HTTP webserver is fine
+- we will need many(handle many request)
+- hence put a load balancer in front of it.
+
+Load balancer will have DNS like api.mystore.com
+
+
+Users -> Load balancer -> API servers -> Database
+
+
+User -> Catalog Backend Service -> Catalog Database
+
+End user will not directly interact with backend needs a frontend 
+
+
+User -> Catalog Frontend Service -> Catalog Backend Service -> Catalog Database
+
+
+
+Shop owner's admin interface: 
+SHop owner needs admin console to manage the catalog we can keep the ADMIN UI separate frontend service which interacts with the same backend service to do admin things.
+
+
+User -> Frontend -> Backend -> Catalog Database
+                    Admin UI -> Backend -> Catalog Database
+
+
+Let understand the load on each component:
+user -> frontend -> backend -> Catalog Database
+                    ADMIN UI -> Backend -> Catalog Database
+                    shop owner
+
+Scaling DB :
+When a lot of load comes in the DB will be under heavy load. Given the use case is to list the pages. The load is certainly READ load hence we add READ replicas.
+
+user -> frotend -> backend -write> Catalog DB (master)
+                        -read> Catalog DB (replica)
+                        ADMIN UI -> Backend -> Catalog Database
+                        shop owner
