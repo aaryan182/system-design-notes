@@ -26,6 +26,11 @@
 22. [Bloom Filters](#22-bloom-filters)
 23. [Consistent Hashing](#23-consistent-hashing)
 24. [Big Data Processing](#24-big-data-processing)
+25. [Designing Systems: E-commerce Product Listing](#25-designing-systems-e-commerce-product-listing)
+26. [Designing Systems: API Rate Limiter](#26-designing-systems-api-rate-limiter)
+27. [Designing Systems: Scaling Notification System](#27-designing-systems-scaling-notification-system)
+28. [Designing Systems: Real-time Abuse Masker](#28-designing-systems-real-time-abuse-masker)
+29. [Designing Systems: Tinder Feed](#29-designing-systems-tinder-feed)
 
 ---
 
@@ -42,6 +47,7 @@ graph TD
     A --> F[Infrastructure & Resilience]
     A --> G[Distributed Algorithms]
     A --> H[Big Data]
+    A --> I[Case Studies]
     
     B --> B1[What is System Design]
     B --> B2[Approach & Methodology]
@@ -75,6 +81,12 @@ graph TD
     H --> H1[Big Data Processing]
     H --> H2[MapReduce & Spark]
     
+    I --> I1[E-commerce Catalog]
+    I --> I2[API Rate Limiter]
+    I --> I3[Notification System]
+    I --> I4[Abuse Masker]
+    I --> I5[Tinder Feed]
+    
     style A fill:#f9f,stroke:#333,stroke-width:4px
     style B fill:#bbf,stroke:#333,stroke-width:2px
     style C fill:#bfb,stroke:#333,stroke-width:2px
@@ -83,6 +95,7 @@ graph TD
     style F fill:#e1bee7,stroke:#333,stroke-width:2px
     style G fill:#80deea,stroke:#333,stroke-width:2px
     style H fill:#ffcc80,stroke:#333,stroke-width:2px
+    style I fill:#a5d6a7,stroke:#333,stroke-width:2px
 ```
 
 ---
@@ -6913,5 +6926,877 @@ graph TD
 | Maintainability | Centralized updates | Requires library updates |
 | Security | Better isolation | Exposes Redis details |
 | Recommended | For strict isolation | For performance-critical systems |
+
+---
+
+## 27. Designing Systems: Scaling Notification System
+
+**Location:** `DesigningSystems/3_Des_Scaling_Notifications.txt`
+
+**Motive**: Design a notification service that sends notifications to users across channels. The system needs to be horizontally scalable and should support a very high fan-out.
+
+### Starting Simple
+
+Instead of directly jumping to send "millions" of notifications, we start simple and build up the complexity.
+
+```mermaid
+flowchart LR
+    A[Product Manager] --> B[Notification Control<br/>Service]
+    B --> C[(Notification Meta<br/>Database)]
+    
+    style A fill:#ffe0b2
+    style B fill:#b2dfdb
+    style C fill:#f8bbd0
+```
+
+**Notification Template Storage**:
+- Need a UI and simple backend to create notification templates
+- Templates configured by internal team
+- Number of templates will not be huge (fits on single machine)
+- Start with relational DB for structured data
+
+**When any team/product wants to send notification**:
+1. Create a template using the notification control service
+2. Specify the variables
+3. Note the I/O of the defined template
+
+### Notification Channels
+
+Users can be notified via multiple channels:
+
+```mermaid
+graph TD
+    A[Notification Channels] --> B[Email]
+    A --> C[Android Push Notifications]
+    A --> D[Apple Push Notifications]  
+    A --> E[SMS]
+    
+    B --> B1[SES, Mailgun]
+    C --> C1[FCM, OneSignal]
+    D --> D1[APNS, OneSignal]
+    E --> E1[Twilio, MSG91]
+    
+    style A fill:#64b5f6,stroke:#1976d2
+    style B fill:#c8e6c9
+    style C fill:#c8e6c9
+    style D fill:#c8e6c9
+    style E fill:#c8e6c9
+```
+
+**Key Point**: API calls to providers are expensive network calls with high latencies. One machine cannot make millions of concurrent network calls.
+
+### Simple Flow (Single User)
+
+```mermaid
+sequenceDiagram
+    participant PM as Product Manager
+    participant CS as Control Service
+    participant DB as Meta DB
+    participant User
+    
+    PM->>CS: Create notification template
+    CS->>DB: Store template
+    PM->>CS: Trigger notification for user
+    CS->>User: Send notification
+```
+
+**Problems with Simple Approach**:
+1. Triggering one notification for every user is painful for PM
+2. Control service becomes the bottleneck (network calls take time)
+3. Provider outages cause system failures
+
+**Solution**: Make things asynchronous!
+
+### Asynchronous Architecture
+
+```mermaid
+flowchart TD
+    A[User/PM] --> B[Control Service]
+    B --> C[(Meta DB)]
+    B --> D[Message Queue<br/>SQS]
+    D --> E[Workers]
+    E --> F[Notification<br/>Providers]
+    
+    G[Message Format] --> H["<user_id, body, channel>"]
+    
+    style A fill:#e1f5ff
+    style B fill:#b2dfdb
+    style C fill:#f8bbd0
+    style D fill:#fff9c4
+    style E fill:#c8e6c9
+    style F fill:#ffccbc
+```
+
+**Benefits**:
+- Solves retry handling automatically
+- Doesn't overwhelm notification providers
+- Decouples sending from processing
+- Scales workers independently
+
+### Bulk Notifications: Notify Everyone
+
+```mermaid
+flowchart TD
+    A[PM Submits Job] --> B[Control Service]
+    B --> C[SQS 2: User Iterator]
+    C --> D[Iterator Workers]
+    D --> E[(User Database)]
+    D --> F[SQS 1: Notification Emitter]
+    F --> G[Notification Workers]
+    G --> H[Users]
+    
+    I["Single Request → SQS1"]
+    J["Bulk Request → SQS2"]
+    
+    style B fill:#b2dfdb
+    style C fill:#fff9c4
+    style F fill:#fff9c4
+    style D fill:#c8e6c9
+    style G fill:#c8e6c9
+```
+
+**Why Two Queues?**
+
+| Queue | Purpose | Traffic Type |
+|-------|---------|--------------|
+| **SQS 1** | Notification Emitter | Individual notifications, high volume |
+| **SQS 2** | User Iterator | Bulk requests, processing tasks |
+
+**Approach 1 (Poor)**: Control server iterates through all users
+- Iterating through million rows takes time
+- Eats up control service resources
+
+**Approach 2 (Better)**: Control server delegates iteration
+- Iterator service handles user iteration
+- Filters users based on criteria
+- Pushes to notification emitter queue
+
+### Priority-Based Notifications
+
+```mermaid
+graph TD
+    A[Control Service] --> B{Priority?}
+    B --> |P1 Critical| C[P1 Queue]
+    B --> |P2 Important| D[P2 Queue]
+    B --> |P3 Marketing| E[P3 Queue]
+    
+    C --> F[P1 Workers<br/>Dedicated]
+    D --> G[P2 Workers<br/>Dedicated]
+    E --> H[P3 Workers<br/>Dedicated]
+    
+    F --> I((Users))
+    G --> I
+    H --> I
+    
+    style C fill:#ff5252,color:#fff
+    style D fill:#ffeb3b
+    style E fill:#c8e6c9
+```
+
+**Problem**: One marketing campaign keeps executors busy, other notifications starve
+
+**Solution**: Multiple priority queues with dedicated workers
+
+**Example Priority Mapping**:
+- **P1 (Critical)**: Appointment reminders, OTPs, Security alerts
+- **P2 (Important)**: Order updates, Payment confirmations
+- **P3 (Marketing)**: Promotional campaigns, Newsletters
+
+**Benefits**:
+- Horizontal scalability: add more queues, add more workers
+- Load isolation
+- Prevents starvation of important notifications
+
+### Preventing Duplicate Notifications
+
+```mermaid
+flowchart TD
+    A[Notification Request] --> B{Already Sent?}
+    B --> |No| C[Send Notification]
+    C --> D[Mark as Sent]
+    D --> E[(Tracking DB<br/>Redis)]
+    
+    B --> |Yes| F[Skip/Log]
+    
+    G[Bloom Filter] --> H[Fast Duplicate Check]
+    
+    style E fill:#f44336,color:#fff
+    style G fill:#64b5f6
+```
+
+**Problem**: Receiving multiple marketing notifications from the same campaign is annoying
+
+**Solution**: Notification Tracker Database
+
+**Requirements**:
+- Lightweight & shardable
+- In-memory with periodic persistence
+- Bloom filter support a plus
+
+**Redis satisfies all requirements!**
+
+### Complete Architecture
+
+```mermaid
+flowchart TD
+    subgraph Input Layer
+        A[PM/Internal Teams]
+        B[Automated Triggers]
+    end
+    
+    subgraph Control Layer
+        C[Notification Control Service]
+        D[(Meta DB<br/>Templates)]
+    end
+    
+    subgraph Processing Layer
+        E[SQS 2: Iterator Queue]
+        F[Iterator Workers]
+        G[SQS 1: Emitter Queue<br/>P1, P2, P3]
+    end
+    
+    subgraph Delivery Layer
+        H[Notification Workers]
+        I[(Tracker DB<br/>Redis)]
+    end
+    
+    subgraph External
+        J[Email Provider]
+        K[Push Provider]
+        L[SMS Provider]
+    end
+    
+    A --> C
+    B --> C
+    C --> D
+    C --> E
+    C --> G
+    E --> F
+    F --> G
+    G --> H
+    H --> I
+    H --> J
+    H --> K
+    H --> L
+    
+    style D fill:#f8bbd0
+    style I fill:#f44336,color:#fff
+    style G fill:#fff9c4
+    style E fill:#fff9c4
+```
+
+### Key Takeaways
+
+1. **Start Simple**: Begin with synchronous, scale to async
+2. **Async is Essential**: High-latency external calls require message queues
+3. **Delegate Heavy Lifting**: Iterator service handles user enumeration
+4. **Priority Matters**: Separate queues prevent notification starvation
+5. **Track Duplicates**: Use Redis + Bloom filters to prevent duplicates
+6. **Provider Abstraction**: Workers should be channel-agnostic when possible
+7. **Horizontal Scaling**: Add more queues and workers as needed
+
+---
+
+## 28. Designing Systems: Real-time Abuse Masker
+
+**Location:** `DesigningSystems/4_Des_Abuse_Masker.txt`
+
+**Motive**: Not everything is a service. Sometimes the best solution is a library, not a network call.
+
+### Problem Statement
+
+Design a real-time abuse masker for live video streaming:
+- One video live stream is powered by one server
+- All participants (max 100) are connected to that same server
+- Participants can send text messages (broadcast)
+- Abusive words need to be masked in real-time
+
+### Understanding the Architecture
+
+```mermaid
+flowchart TD
+    A[Creator] --> |RTMP| B[Live Stream Server]
+    
+    C[Participant 1] <--> |WebSocket| B
+    D[Participant 2] <--> |WebSocket| B
+    E[Participant N] <--> |WebSocket| B
+    
+    F[Socket.io Room] --> G[All participants<br/>in same room]
+    
+    style B fill:#64b5f6
+    style F fill:#c8e6c9
+```
+
+**How Socket.io Works**:
+- Socket.io has the notion of "rooms"
+- Simple socket.io process runs on server
+- Create "room" for this live stream
+- Participants join the room
+- Messages broadcast to all room members
+
+### Abuse Dictionary Management
+
+```mermaid
+flowchart LR
+    A[Live Stream<br/>Server Starts] --> B[Download Abuse File<br/>from S3]
+    B --> C[Load into Memory]
+    C --> D[Build Data Structure]
+    
+    style A fill:#e1f5ff
+    style B fill:#fff9c4
+    style C fill:#c8e6c9
+    style D fill:#64b5f6
+```
+
+**Storage**: List of abusive words stored in text file on Blob Storage (S3)
+
+**Key Question**: How and which data structure to use?
+
+### Approach 1: Tokenize and Lookup (Hash Table)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Server
+    participant Dict as Dictionary<br/>(HashSet)
+    
+    User->>Server: Send message "hello bad world"
+    Server->>Server: Tokenize into words
+    
+    loop For each word
+        Server->>Dict: Is "hello" abusive?
+        Dict-->>Server: No
+        Server->>Dict: Is "bad" abusive?
+        Dict-->>Server: Yes → Mask
+        Server->>Dict: Is "world" abusive?
+        Dict-->>Server: No
+    end
+    
+    Server->>User: Broadcast "hello *** world"
+```
+
+**Algorithm**:
+1. Load all abuses in dictionary (hash table/set)
+2. Tokenize incoming text messages
+3. For each word, check if in abuse dictionary
+4. If yes: mask and update the token
+5. If no: copy the token as-is
+
+**Disadvantages**:
+- Tokenize requires extra space (text to list of tokens)
+- String lookup is expensive
+- Multiple hash computations per message
+
+### Approach 2: Trie-Based Matching (Optimal)
+
+```mermaid
+graph TD
+    A[Root] --> B[b]
+    A --> C[d]
+    A --> D[f]
+    
+    B --> B1[a]
+    B1 --> B2[d*]
+    
+    C --> C1[a]
+    C1 --> C2[m]
+    C2 --> C3[n*]
+    
+    D --> D1[...]
+    
+    style B2 fill:#ff5252,color:#fff
+    style C3 fill:#ff5252,color:#fff
+```
+
+**Algorithm**:
+1. Build a Trie from all abuse words
+2. For each character in text, traverse the trie
+3. When space/comma/etc. encountered, reset trie iteration (to root)
+4. If abuse found AND next char is EOS or non-alphabet, mask the word
+5. Final string is broadcasted to all participants
+
+**Benefits**:
+- O(n) single pass traversal
+- No tokenization needed
+- Memory efficient
+- Faster than hash lookups for this use case
+
+### Why NOT a Microservice?
+
+```mermaid
+flowchart TD
+    subgraph Poor Design
+        A[Live Stream Server] --> |HTTP Request| B[Abuse Masker Service]
+        B --> |Response| A
+    end
+    
+    subgraph Good Design
+        C[Live Stream Server] --> D[Abuse Masker Library<br/>In-Memory Trie]
+    end
+    
+    style B fill:#ffcdd2
+    style D fill:#c8e6c9
+```
+
+**Poor Design**: Abuse masker as HTTP service
+- **Problem**: Making network call for EVERY text message is massively slow
+  - Setting up TCP connection (3-way handshake)
+  - Terminating connection (2-way teardown)
+  - Even for persistent connections, incurs network I/O
+
+**Good Design**: Abuse masker as library
+- Trie loaded in server memory
+- Zero network overhead
+- Nanosecond lookup time
+- **Key Insight**: Not everything needs to be a service!
+
+### Admin Console for Abuse List
+
+```mermaid
+flowchart TD
+    A[Internal Team] --> B[Abuse Admin UI]
+    B --> C[Abuse Admin Service]
+    C --> D[(Abuse Database)]
+    C --> E[Generate New File]
+    E --> F[(S3 Blob Storage)]
+    
+    G[Live Stream Servers] --> |Periodic Refresh| F
+    
+    style A fill:#ffe0b2
+    style B fill:#fff9c4
+    style C fill:#b2dfdb
+    style D fill:#f8bbd0
+    style F fill:#ffcc80
+```
+
+**Features**:
+- UI to list and manage abusive words
+- Update abuses and push to S3
+- Live stream servers periodically refresh their local copy
+
+### Complete Architecture
+
+```mermaid
+flowchart TD
+    subgraph Admin Layer
+        A[Internal Team]
+        B[Abuse Admin Service]
+        C[(Abuse DB)]
+    end
+    
+    subgraph Storage
+        D[(S3: abuse_words.txt)]
+    end
+    
+    subgraph Live Stream Infrastructure
+        E[Server 1<br/>+ Trie Library]
+        F[Server 2<br/>+ Trie Library]
+        G[Server N<br/>+ Trie Library]
+    end
+    
+    subgraph Participants
+        H[Room 1 Users]
+        I[Room 2 Users]
+        J[Room N Users]
+    end
+    
+    A --> B
+    B --> C
+    B --> D
+    D --> E
+    D --> F
+    D --> G
+    
+    E <--> H
+    F <--> I
+    G <--> J
+    
+    style D fill:#ffcc80
+    style E fill:#c8e6c9
+    style F fill:#c8e6c9
+    style G fill:#c8e6c9
+```
+
+### Key Takeaways
+
+1. **Not Everything is a Service**: Libraries can be more efficient than microservices
+2. **Network Calls are Expensive**: Avoid network I/O for frequent, fast operations
+3. **Choose Right Data Structure**: Trie beats HashMap for real-time string matching
+4. **Single Traversal**: O(n) complexity with Trie is optimal for streaming text
+5. **Centralized Configuration**: Abuse list managed centrally, distributed via blob storage
+6. **Local Refresh**: Servers periodically pull new abuse lists
+7. **WebSocket for Real-time**: Socket.io rooms enable efficient broadcasting
+
+### Performance Comparison
+
+| Approach | Time Complexity | Space Complexity | Network Calls | Latency |
+|----------|----------------|------------------|---------------|---------|
+| **Service-based** | O(n) + Network | O(1) local | Every message | ~10-50ms |
+| **Hash Table** | O(n × m) | O(words) | None | ~1-5ms |
+| **Trie Library** | O(n) | O(chars) | None | ~0.1-1ms |
+
+*n = message length, m = average word length*
+
+---
+
+## 29. Designing Systems: Tinder Feed
+
+**Location:** `DesigningSystems/5_Des_Tinder_Feed.txt`
+
+**Motive**: Design feed for Tinder with the feature to swipe left or right. For a great user experience, a user should not be shown a profile that they have already swiped.
+
+### Feed Criteria and Preferences
+
+```mermaid
+graph TD
+    A[Feed Ranking Factors] --> B[Proximity]
+    A --> C[Common Interests]
+    
+    B --> B1[Near is Better]
+    B --> B2[Geo-spatial Queries]
+    
+    C --> C1[Shared Interests]
+    C --> C2[Profile Information]
+    
+    style A fill:#64b5f6,stroke:#1976d2
+    style B fill:#c8e6c9
+    style C fill:#fff9c4
+```
+
+### Capturing User Location (Proximity)
+
+```mermaid
+flowchart LR
+    A[User Device] --> |Continuously Emit<br/>lat, long| B[Backend API]
+    B --> C[(Location DB<br/>Redis)]
+    
+    D[Requirements] --> E[Geo-spatial Queries]
+    D --> F[Horizontally Scalable<br/>via Sharding]
+    
+    style A fill:#e1f5ff
+    style B fill:#b2dfdb
+    style C fill:#f44336,color:#fff
+```
+
+**Database Requirements**:
+- Supports geo-spatial queries (for generating feed)
+- Can be horizontally scaled through sharding (handle huge incoming load)
+
+### Capturing Common Interests
+
+```mermaid
+flowchart TD
+    A[User] --> B[Auth API]
+    B --> C[(Auth DB<br/>Relational)]
+    
+    B --> D[Message Broker<br/>SQS/Kafka]
+    D --> E[Enrichers]
+    
+    E --> F[Facebook API]
+    E --> G[Google API]
+    E --> H[Twitter API]
+    
+    E --> I[(Profile DB<br/>MongoDB)]
+    B --> I
+    
+    style C fill:#f8bbd0
+    style D fill:#fff9c4
+    style I fill:#c8e6c9
+```
+
+**Two Methods**:
+1. Ask user to provide details (profile information)
+2. Capture details with social login (authorizing for profile/interest/connection scraping)
+
+### Feed Generation Behavior
+
+```mermaid
+sequenceDiagram
+    participant App as Mobile App
+    participant API as Feed API
+    participant MQ as Message Queue
+    participant Gen as Feed Generator
+    participant DB as Databases
+    
+    Note over App: User running low on profiles
+    App->>API: Trigger feed population
+    API->>MQ: Queue feed generation job
+    MQ->>Gen: Process job
+    
+    par Database Queries
+        Gen->>DB: Query Location DB (Redis)
+        Gen->>DB: Query Profile DB (MongoDB)
+    end
+    
+    Gen->>DB: Write to Feed DB (DynamoDB)
+    App->>API: Fetch feed items
+    API->>DB: Read from Feed DB
+    DB-->>API: Feed items
+    API-->>App: Display profiles
+```
+
+**Key Decisions**:
+- Frontend (app) makes API call to trigger feed population
+- Backend maintains feed counter and generates when needed
+- Feed generation is async (time-consuming operation)
+
+### Feed Database Design
+
+```mermaid
+graph TD
+    A[Feed Storage Options] --> B[Approach 1:<br/>Store References]
+    A --> C[Approach 2:<br/>Store Full Profiles]
+    
+    B --> B1["<user_id, candidate.user_id, created_at>"]
+    B --> B2[Partition by user_id]
+    B --> B3[Ordered by created_at]
+    
+    C --> C1["<user_id, candidate_profile, created_at>"]
+    C --> C2[Significant storage required]
+    C --> C3[Risk of stale data]
+    
+    B --> D[Pro: Less storage]
+    B --> E[Con: Additional network call<br/>to fetch profile]
+    
+    C --> F[Pro: No runtime profile fetch]
+    C --> G[Con: More storage + stale data]
+    
+    style B fill:#c8e6c9
+    style C fill:#fff9c4
+```
+
+**Important**: NEVER store feed as a "list" in the document
+- Bloats document size in MongoDB
+- Expensive serialization/deserialization
+- Difficult iteration
+
+### Complete Feed Generation Architecture
+
+```mermaid
+flowchart TD
+    subgraph User Layer
+        A[Mobile App]
+    end
+    
+    subgraph API Layer
+        B[Feed API]
+    end
+    
+    subgraph Processing Layer
+        C[Message Queue]
+        D[Feed Generator]
+    end
+    
+    subgraph Data Layer
+        E[(Location DB<br/>Redis)]
+        F[(Profile DB<br/>MongoDB)]
+        G[(Feed DB<br/>DynamoDB)]
+    end
+    
+    A --> B
+    B --> C
+    C --> D
+    
+    D --> E
+    D --> F
+    D --> G
+    
+    B --> G
+    
+    style E fill:#f44336,color:#fff
+    style F fill:#c8e6c9
+    style G fill:#ffcc80
+```
+
+### Storing Swipes
+
+```mermaid
+flowchart TD
+    A[User A Swipes B] --> B{Check Feed DB}
+    B --> C["Mark is_interested<br/>in A's feed item for B"]
+    
+    B --> D["Check <B, A><br/>in Feed DB"]
+    D --> E{Entry Exists?}
+    
+    E --> |No| F[Do Nothing]
+    E --> |Yes| G{B.is_interested<br/>for A?}
+    
+    G --> |False| F
+    G --> |Yes| H["Create Match<br/>in Match DB"]
+    
+    style H fill:#c8e6c9
+    style F fill:#ffcdd2
+```
+
+**Key Insight**: We don't need a separate DB for swipes. Leverage the feed database and add `is_interested` in each feed item.
+
+**When A swipes B**:
+1. Mark `is_interested` in feed item
+2. Check `<B, A>` in feed DB
+3. If entry doesn't exist OR `is_interested = False`: do nothing
+4. Else: create a match in Match DB
+
+### Ensuring No Repetition with Bloom Filters
+
+```mermaid
+flowchart TD
+    A[Feed Generation] --> B{Check Bloom Filter}
+    B --> |Possibly Seen| C[Skip User]
+    B --> |Definitely Not Seen| D[Add to Feed]
+    D --> E[Update Bloom Filter]
+    
+    F[Bloom Filter Properties] --> G[Definite NO]
+    F --> H[Approximate YES is fine]
+    
+    I[Storage] --> J[Redis + Periodic<br/>Persistence]
+    
+    style B fill:#64b5f6
+    style G fill:#c8e6c9
+    style H fill:#fff9c4
+    style J fill:#f44336,color:#fff
+```
+
+**Problem**: When A registers a "swipe" for B, A should NEVER see B again in the feed.
+
+**Solution**: Bloom Filters!
+- We need a **definite NO** (don't show swiped profiles)
+- **Approximate YES is fine** (might miss some edge cases)
+- Classic use case for Bloom Filter
+
+**Implementation**:
+- Bloom filter consulted before adding any item to feed
+- Redis for storage with periodic persistence to disk
+
+### Match and Messaging
+
+```mermaid
+graph LR
+    A[User A] --> B[Match]
+    C[User B] --> B
+    
+    B --> D["<user_a, user_b, match_id>"]
+    D --> E[Messaging Service]
+    E --> F[All messages for a 'match']
+    
+    style B fill:#ff4081
+    style E fill:#64b5f6
+```
+
+**Match ID Flow**:
+- Match created with unique `match_id`
+- This `match_id` used by messaging service
+- All messages associated with a specific "match"
+
+### Complete System Architecture
+
+```mermaid
+flowchart TD
+    subgraph User Devices
+        A1[User A Device]
+        A2[User B Device]
+    end
+    
+    subgraph Authentication
+        B[Auth API]
+        C[(Auth DB)]
+    end
+    
+    subgraph Enrichment
+        D[Message Broker]
+        E[Enrichers]
+        F[(Profile DB<br/>MongoDB)]
+    end
+    
+    subgraph Location
+        G[(Location DB<br/>Redis Geo)]
+    end
+    
+    subgraph Feed System
+        H[Feed API]
+        I[Message Queue]
+        J[Feed Generator]
+        K[(Feed DB<br/>DynamoDB)]
+    end
+    
+    subgraph Matching
+        L[(Match DB)]
+        M[Messaging Service]
+    end
+    
+    subgraph Anti-Duplication
+        N[Bloom Filter<br/>Redis]
+    end
+    
+    A1 --> B
+    A2 --> B
+    B --> C
+    B --> D
+    D --> E
+    E --> F
+    
+    A1 --> |Location Updates| G
+    A2 --> |Location Updates| G
+    
+    A1 --> H
+    A2 --> H
+    H --> I
+    I --> J
+    J --> G
+    J --> F
+    J --> N
+    J --> K
+    H --> K
+    
+    K --> L
+    L --> M
+    
+    style G fill:#f44336,color:#fff
+    style F fill:#c8e6c9
+    style K fill:#ffcc80
+    style N fill:#64b5f6
+    style L fill:#ff4081
+```
+
+### Database Selection Summary
+
+| Component | Database | Reason |
+|-----------|----------|--------|
+| **Auth DB** | Relational (PostgreSQL) | ACID, user credentials |
+| **Profile DB** | MongoDB | Flexible schema, enriched profiles |
+| **Location DB** | Redis Geo | Fast geo-spatial queries, sharding |
+| **Feed DB** | DynamoDB | Key-value access, partition by user_id |
+| **Match DB** | Relational/DynamoDB | Simple key-value with relations |
+| **Bloom Filter** | Redis | In-memory, fast lookups |
+
+### Key Takeaways
+
+1. **Geo-spatial Databases**: Use Redis Geo or similar for proximity-based queries
+2. **Async Feed Generation**: Feed generation is expensive, do it asynchronously
+3. **Bloom Filters for Deduplication**: Perfect for "definitely not" checks
+4. **Don't Create DBs for Everything**: Leverage existing data stores (swipes in feed DB)
+5. **Enrichment Pipeline**: Use message queues to enrich profiles from social APIs
+6. **Partition by User**: Feed data partitioned by user_id for efficient queries
+7. **Match ID as Key**: Use match_id to link messaging with user pairs
+
+### Scalability Considerations
+
+```mermaid
+graph TD
+    A[Scalability Points] --> B[Location DB: Sharding]
+    A --> C[Feed DB: Partition by User]
+    A --> D[Feed Generator: Multiple Workers]
+    A --> E[Bloom Filter: Per-User Sharding]
+    
+    B --> B1[Handle massive<br/>location updates]
+    C --> C1[Each user's feed<br/>on specific partition]
+    D --> D1[Parallel feed<br/>generation]
+    E --> E1[Distributed bloom<br/>filter storage]
+    
+    style A fill:#64b5f6
+    style B1 fill:#c8e6c9
+    style C1 fill:#c8e6c9
+    style D1 fill:#c8e6c9
+    style E1 fill:#c8e6c9
+```
 
 ---
