@@ -1,0 +1,82 @@
+Motive: Not everything is a service.
+
+Desgining realtime Abuse Masker
+
+One video live stream is powered by one server. All participants part of that live stream (max 100) are connected to that same server.
+
+In this live stream people can send text messages (broadcast)
+
+Understanding architecture: 
+
+
+- live stream of creater is captured over RTMP 
+- participants are connected to the server over websocket 
+- participant can send messages to all 
+
+
+How socket.io works?
+
+socketio has notion of rooms.
+simple socket io process is running on server.
+we create "room" for this live stream . participants join the room.
+
+
+Abuse Dictionary: assume that we have a list of words (abuses) stored in a text file on Blob Storage like s3 (at a path). Hence when the live stream server starts up 
+- downloads the abuse file 
+- loads it in memory -> how and which data structure?
+
+
+Masking the abuse: 
+Given all the messages of the livestream will go through the same server. we have to find some logic that efficiently detects and masks.
+
+Approach 1: Tokenize and lookup
+- loads all abuses in dictionary(hash table)(set)
+- tokenize the incoming text messages
+- for each word check if it is in abuse dictionary
+- if yes: mask and update the token
+- if no: copy the token 
+
+This is a simple approach but not efficient 
+- tokenize (text to list of tokens requires extra space)
+- string lookup is expensive 
+
+
+Approach 2: Trie 
+
+We can build a trie out of abuses and in just O(n) traversal mask the abuses .
+
+For each character in text we iteratre through trie everytime we get 
+'_', ',' .. etc we reset our trie iteration (to the top)
+
+if the abuse is found and next char is EOS or non alphabet we mask and write to the new string. Else the word copied as it is.
+The final string is then sent/ broadcasted to every participant.
+
+How this fits into the system?
+We typically think of databases and all to hold and query but that is very slow for this plus no databse exposes tries 
+
+so what we can do is: 
+
+Poor way to design this system:
+
+Have a "abuse masker" service that exposes on HTTP endpoint accepting the text and returns masked version of it. The web service will have the trie loaded in memory.
+
+
+
+Note: not everything needs to be a service.
+Disadvantage: making network call every text will be massively slow.
+    -> setting up TCP connection everytime (3 way handshake)
+    -> terminating once we get response (2 way teardown)
+
+
+    - for even persistent connection we incure network I/O
+
+Hence we creating a service to clean the text is a bad ideas.
+
+
+Configuring Abuse list:
+We need a way to update the list of abuses (internal team)
+- we need a UI where abuses are listed 
+- we should update the abuses and push them to S3
+
+We create abuse admin service to take care of this.
+
