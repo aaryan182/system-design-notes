@@ -1,0 +1,94 @@
+Designing Tinder Feed
+
+Design Feed for Tinder and feature to swipe left or right. For a great user experience a user should not be shown a profile that he/she already swiped.
+
+Feed criteria and Preference:
+- Proximity: near the better 
+- Common Interest: shared interest 
+
+
+Capturing Proximity:
+Users device continously emits (lat, long) to our backend. we store this information in a database.
+
+- that supports geo-spatial queries -> generating feed 
+- can be horizontally scaled through sharding -> handle huge incoming lead 
+
+Capturing Common Interest :
+
+1. ask user to provide those details (profile information)
+2. capture the details with social login (authorising for profile/ interest/connection scrapping)
+
+
+user -> auth api -> auth db (relational DB)
+
+auth api -> broker(sqs, kafka) -> enrichers -> profile db
+auth api -> profile DB
+enrichers (facebook, google, twitter)
+
+
+Now that we have the interest information and current location we can generate feed for users.
+
+Behaviour: Generate feed when user is about to exhaust the current one.
+-> Frontend(app) will make an API call to trigger population of the feed.
+
+-> maintain a feed counter in the backend and check everytime user swipes.(slow UX)
+
+
+Feed Database: Feed Database can potentially explode(user x user) and will require decent storage. For each user the DB holds Feed Items.Fetch feed item - profile information that user has not seen before.
+
+Approach 1: 
+store: < user_id, candidate.user_id, created_at >
+we can partition by this              (ordered by)
+
+But whenver we are returning we have to fetch profile into in real time and send it to user (additional network call)
+
+Approach 2: 
+store: < user_id, candidate_profile, created_at>
+
+we require a significant storage + risk of serving stale data but we avoid making call to profile service on runtime.
+
+In either case, we should never store feed of a userf is "list"
+- it will bloat up document size on mongoDB
+- expensive serialization and deserialization
+- iteration is difficult
+
+
+Feed Generator: 
+- should be async because it is time consuming.
+- should be triggered by frontend 
+
+user -> feed API -> message queue -> generator -> location db(redis)
+                                               -> profile DB(mongodb)
+
+feed API -> Feed Database (DynamoDB)
+
+Generator -> Feed Database
+
+
+Storing Swipes: 
+people swipe left or right to indicate interest 
+we do not need a separate DB to hold this information and we leverage feed databse and just add "is_interested" in each feed item.
+
+Note: we donot have to create a new DB for everything .
+
+When A swipes B, 
+- mark is_interested in feed item 
+- check < B, A> in feed DB 
+- if entry does not exists or is_interested = False : do nothing 
+- else : create a match (in match DB)
+
+
+
+
+Ensuring no replication: when A registers a "swipe" for B , A should never see B again in the feed while generating the feed we have to check for past swipe and add only if new.
+
+
+We need a definite no 
+approximate yes is fine 
+
+classic case of Bloom Filter ( we use redis + periodic persistant to store swipe information)
+Bloom filter is consulted before adding any item to feed. 
+
+
+<user_a, user_b, match_id>
+this match id will be used by messaging service and all messages are for a "match"
